@@ -2,11 +2,7 @@
 #include <string>
 #include <vector>
 
-struct Vec2
-{
-    float x;
-    float y;
-};
+#include "Vec2.h"
 
 struct Polyline
 {
