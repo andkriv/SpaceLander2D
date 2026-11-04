@@ -45,13 +45,18 @@ const Terrain& Editor::terrain() const
     return m_terrain;
 }
 
-void Editor::setTerrain(Terrain t)
+void Editor::setScene(Scene s)
 {
-    m_terrain = std::move(t);
+    m_terrain = std::move(s.terrain);
+    m_rockets = std::move(s.rockets);
+
     m_current = {};
     m_drawing = false;
     m_selected = m_terrain.polylines.empty() ? -1 : 0;
     m_counter = (int)m_terrain.polylines.size();
+
+    m_selectedRocket = m_rockets.empty() ? -1 : 0;
+    m_rocketCounter = (int)m_rockets.size();
 }
 
 void Editor::pollDialog(Renderer& r)
@@ -71,15 +76,17 @@ void Editor::pollDialog(Renderer& r)
         {
             if (path.size() < 5 || path.compare(path.size() - 5, 5, ".json") != 0)
                 path += ".json";
-            m_status = SceneIO::save(m_terrain, path, &err) ? "Exported: " + path
-                                                            : "Export failed: " + err;
+
+            Scene s{ m_terrain, m_rockets };
+            m_status = SceneIO::save(s, path, &err) ? "Exported: " + path
+                                                    : "Export failed: " + err;
         }
         else
         {
-            Terrain t;
-            if (SceneIO::load(t, path, &err))
+            Scene s;
+            if (SceneIO::load(s, path, &err))
             {
-                setTerrain(std::move(t));
+                setScene(std::move(s));
                 m_status = "Imported: " + path;
             }
             else

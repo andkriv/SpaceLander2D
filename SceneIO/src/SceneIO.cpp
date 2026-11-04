@@ -9,7 +9,7 @@ using json = nlohmann::json;
 
 namespace
 {
-    constexpr int kVersion = 1;
+    constexpr int kVersion = 2;
 
     std::filesystem::path toPath(const std::string& s)
     {
@@ -26,13 +26,13 @@ namespace
 namespace SceneIO
 {
 
-    bool save(const Terrain& t, const std::string& path, std::string* err)
+    bool save(const Scene& s, const std::string& path, std::string* err)
     {
         json j;
 
         j["version"] = kVersion;
         json lines = json::array();
-        for (const auto& pl : t.polylines)
+        for (const auto& pl : s.terrain.polylines)
         {
             json pts = json::array();
             for (const auto& p : pl.points)
@@ -41,6 +41,13 @@ namespace SceneIO
             lines.push_back({ {"name", pl.name}, {"points", pts} });
         }
         j["terrain"] = { {"polylines", lines} };
+
+        json rockets = json::array();
+        for (const auto& r : s.rockets)
+            rockets.push_back({ {"name", r.name},
+                                {"pos", { r.pos.x, r.pos.y }},
+                                {"angle", r.angle} });
+        j["rockets"] = rockets;
 
         std::ofstream f(toPath(path));
         if (!f)
@@ -52,7 +59,7 @@ namespace SceneIO
         return f.good();
     }
 
-    bool load(Terrain& out, const std::string& path, std::string* err)
+    bool load(Scene& out, const std::string& path, std::string* err)
     {
         std::ifstream f(toPath(path));
         if (!f)
@@ -71,16 +78,27 @@ namespace SceneIO
                 return false;
             }
 
-            Terrain t;
+            Scene s;
             for (const auto& jl : j.at("terrain").at("polylines"))
             {
                 Polyline pl;
                 pl.name = jl.at("name").get<std::string>();
                 for (const auto& jp : jl.at("points"))
                     pl.points.push_back({ jp.at(0).get<float>(), jp.at(1).get<float>() });
-                t.polylines.push_back(std::move(pl));
+                s.terrain.polylines.push_back(std::move(pl));
             }
-            out = std::move(t);   // only replace on full success
+            if (j.contains("rockets"))
+            {
+                for (const auto& jr : j["rockets"])
+                {
+                    Rocket r;
+                    r.name = jr.at("name").get<std::string>();
+                    r.pos = { jr.at("pos").at(0).get<float>(), jr.at("pos").at(1).get<float>() };
+                    r.angle = jr.at("angle").get<float>();
+                    s.rockets.push_back(std::move(r));
+                }
+            }
+            out = std::move(s);   // only replace on full success
             return true;
         }
         catch (const std::exception& e)

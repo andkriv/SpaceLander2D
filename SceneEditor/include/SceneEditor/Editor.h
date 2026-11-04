@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "Renderer/Renderer.h"
-#include "SceneData/Terrain.h"
+#include "SceneData/Scene.h"
 #include "SceneData/Rocket.h"
 
 class Editor
@@ -13,7 +13,7 @@ public:
     void draw(Renderer& r) const;
 
     const Terrain& terrain() const;
-    void setTerrain(Terrain t);
+    void setScene(Scene s);
 
 private:
     enum class Pending
