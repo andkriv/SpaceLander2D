@@ -1,11 +1,7 @@
 #pragma once
-#include <imgui.h>
-#include <imgui_impl_sdl3.h>
-#include <imgui_impl_sdlrenderer3.h>
-#include <SDL3/SDL.h>
-
 #include "Export.h"
 
+// no STL or SDL types for interface, keeps DLL clean
 class RENDERER_API Renderer
 {
 public:
@@ -17,7 +13,11 @@ public:
     bool init(const char* title, int width, int height);
     void shutdown();
 
+    bool pollEvents(); // window closed = false
+    void beginFrame(); // clear and start ImGui frame
+    void endFrame();   // draw ImGui on top + presents
+
 private:
-    SDL_Window* window = nullptr;
-    SDL_Renderer* renderer = nullptr;
+    struct Impl;
+    Impl* m_impl;
 };

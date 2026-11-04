@@ -1,16 +1,23 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlrenderer3.h>
+
 #include <SDL3/SDL.h>
 
 #include "Renderer/Renderer.h"
 
-Renderer::Renderer()
-{}
+struct Renderer::Impl
+{
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+};
 
+Renderer::Renderer() : m_impl(new Impl)
+{}
 Renderer::~Renderer()
 {
     shutdown();
+    delete m_impl;
 }
 
 bool Renderer::init(const char* title, int w, int h)
@@ -18,34 +25,70 @@ bool Renderer::init(const char* title, int w, int h)
     if (!SDL_Init(SDL_INIT_VIDEO))
         return false;
 
-    window = SDL_CreateWindow(title, w, h, SDL_WINDOW_RESIZABLE);
-    if (!window)
+    m_impl->window = SDL_CreateWindow(title, w, h, SDL_WINDOW_RESIZABLE);
+    if (!m_impl->window)
         return false;
 
-    renderer = SDL_CreateRenderer(window, nullptr);
-    if (!renderer)
+    m_impl->renderer = SDL_CreateRenderer(m_impl->window, nullptr);
+    if (!m_impl->renderer)
         return false;
 
+    SDL_SetRenderVSync(m_impl->renderer, 1);
+
+    IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
-    ImGui_ImplSDLRenderer3_Init(renderer);
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplSDL3_InitForSDLRenderer(m_impl->window, m_impl->renderer);
+    ImGui_ImplSDLRenderer3_Init(m_impl->renderer);
     return true;
 }
 
 void Renderer::shutdown()
 {
-    if (!renderer)
+    if (!m_impl->renderer)
         return;
 
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
 
     ImGui::DestroyContext();
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
+    SDL_DestroyRenderer(m_impl->renderer);
+    SDL_DestroyWindow(m_impl->window);
 
-    renderer = nullptr;
-    window = nullptr;
+    m_impl->renderer = nullptr;
+    m_impl->window = nullptr;
 
     SDL_Quit();
+}
+
+bool Renderer::pollEvents()
+{
+    bool running = true;
+    SDL_Event e;
+    while (SDL_PollEvent(&e))
+    {
+        ImGui_ImplSDL3_ProcessEvent(&e);
+        if (e.type == SDL_EVENT_QUIT)
+            running = false;
+    }
+    return running;
+}
+
+void Renderer::beginFrame()
+{
+    ImGui_ImplSDLRenderer3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    SDL_SetRenderDrawColor(m_impl->renderer, 20, 22, 28, 255);
+    SDL_RenderClear(m_impl->renderer);
+}
+
+void Renderer::endFrame()
+{
+    ImGui::Render();
+
+    ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), m_impl->renderer);
+    SDL_RenderPresent(m_impl->renderer);
 }
