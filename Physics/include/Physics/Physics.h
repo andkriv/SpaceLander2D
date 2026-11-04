@@ -80,4 +80,14 @@ namespace Physics
 
     Vec2 rotate(Vec2 v, float angle);
 
+    std::array<Vec2, 4> hullLocal(const RocketSpec& s);
+
+    MassProps massProps(const RocketSpec& s, float fuel);
+
+    // hull-local point -> world (accounts for the moving COM), render + sim sync
+    Vec2 toWorld(const RocketSpec& s, const BodyState& b, Vec2 local);
+
+    // state from the hull center (editor)
+    BodyState makeState(const RocketSpec& s, Vec2 hullCenter, float angle, float fuelFraction = 1.0f);
+
 } // namespace Physics
