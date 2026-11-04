@@ -26,6 +26,8 @@ private:
 private:
     void pollDialog(Renderer& r);
 
+    void controlRocket(float dt);
+
 private:
     bool     m_drawing = false;
 

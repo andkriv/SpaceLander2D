@@ -23,6 +23,23 @@ namespace
     }
 }
 
+void Editor::controlRocket(float dt)
+{
+    if (m_selectedRocket < 0 || ImGui::GetIO().WantTextInput)
+        return;
+
+    Rocket& rk = m_rockets[m_selectedRocket];
+
+    auto axis = [](ImGuiKey pos, ImGuiKey neg)
+        {
+            return (float)ImGui::IsKeyDown(pos) - (float)ImGui::IsKeyDown(neg);
+        };
+
+    rk.pos.x += axis(ImGuiKey_D, ImGuiKey_A) * kMoveSpeed * dt;
+    rk.pos.y += axis(ImGuiKey_S, ImGuiKey_W) * kMoveSpeed * dt;
+    rk.angle += axis(ImGuiKey_E, ImGuiKey_Q) * kTurnSpeed * dt;
+}
+
 const Terrain& Editor::terrain() const
 {
     return m_terrain;
@@ -77,6 +94,7 @@ void Editor::pollDialog(Renderer& r)
 void Editor::update(Renderer& r)
 {
     pollDialog(r);
+    controlRocket(ImGui::GetIO().DeltaTime);
 
     const InputState& in = r.input();
 
@@ -189,6 +207,8 @@ void Editor::update(Renderer& r)
         m_selectedRocket = -1;
     }
     ImGui::EndDisabled();
+    if (m_selectedRocket >= 0)
+        ImGui::TextDisabled("WASD move, Q/E rotate");
 
     // io part
     ImGui::Separator();
