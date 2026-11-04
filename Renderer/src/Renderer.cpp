@@ -92,3 +92,13 @@ void Renderer::endFrame()
     ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), m_impl->renderer);
     SDL_RenderPresent(m_impl->renderer);
 }
+
+void Renderer::setColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
+{
+    SDL_SetRenderDrawColor(m_impl->renderer, r, g, b, a);
+}
+
+void Renderer::drawLine(float x0, float y0, float x1, float y1)
+{
+    SDL_RenderLine(m_impl->renderer, x0, y0, x1, y1);
+}

@@ -17,6 +17,9 @@ public:
     void beginFrame(); // clear and start ImGui frame
     void endFrame();   // draw ImGui on top + presents
 
+    void setColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255);
+    void drawLine(float x0, float y0, float x1, float y1);
+
 private:
     struct Impl;
     Impl* m_impl;
