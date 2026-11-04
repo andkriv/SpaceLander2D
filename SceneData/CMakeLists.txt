@@ -1,0 +1,2 @@
+add_library(SceneData INTERFACE)
+target_include_directories(SceneData INTERFACE include)

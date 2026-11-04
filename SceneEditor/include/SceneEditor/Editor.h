@@ -1,7 +1,7 @@
 #pragma once
 #include "Renderer/Renderer.h"
 
-#include "Terrain.h"
+#include "SceneData/Terrain.h"
 
 class Editor
 {

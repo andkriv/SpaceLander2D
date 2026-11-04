@@ -21,6 +21,7 @@ set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL3 imgui)
 
 add_subdirectory(Renderer)
+add_subdirectory(SceneData)
 add_subdirectory(SceneEditor)
 add_subdirectory(Scene)
 
