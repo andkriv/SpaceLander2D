@@ -1,7 +1,27 @@
+#include <cmath>
+
 #include <imgui.h>
 
 #include "SceneEditor/Editor.h"
 #include "SceneIO/SceneIO.h"
+
+namespace
+{
+    constexpr float kMoveSpeed = 200.0f;   // px/s
+    constexpr float kTurnSpeed = 2.0f;     // rad/s
+
+    // trapezoid
+    constexpr Vec2 kHull[4] = { {-8, -20}, {8, -20}, {16, 20}, {-16, 20} };
+
+    Vec2 toWorld(const Rocket& rk, const Vec2& l)
+    {
+        float c = std::cos(rk.angle);
+        float s = std::sin(rk.angle);
+
+        return { rk.pos.x + l.x * c - l.y * s,
+                 rk.pos.y + l.x * s + l.y * c };
+    }
+}
 
 const Terrain& Editor::terrain() const
 {
@@ -133,6 +153,43 @@ void Editor::update(Renderer& r)
     }
     ImGui::EndDisabled();
 
+    // rocket part
+    ImGui::Separator();
+    if (ImGui::Button("Add rocket"))
+    {
+        Rocket rk;
+        rk.name = "Rocket " + std::to_string(++m_rocketCounter);
+        rk.pos = { 400.0f + 60.0f * (m_rocketCounter - 1), 200.0f };
+
+        m_rockets.push_back(std::move(rk));
+        m_selectedRocket = (int)m_rockets.size() - 1;
+    }
+
+    const char* rpreview = m_selectedRocket >= 0 ? m_rockets[m_selectedRocket].name.c_str()
+                                                 : "(none)";
+
+    if (ImGui::BeginCombo("Rockets", rpreview))
+    {
+        for (int i = 0; i < (int)m_rockets.size(); ++i)
+        {
+            bool sel = (i == m_selectedRocket);
+            if (ImGui::Selectable(m_rockets[i].name.c_str(), sel))
+                m_selectedRocket = i;
+
+            if (sel)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::BeginDisabled(m_selectedRocket < 0);
+    if (ImGui::Button("Remove selected##rocket"))
+    {
+        m_rockets.erase(m_rockets.begin() + m_selectedRocket);
+        m_selectedRocket = -1;
+    }
+    ImGui::EndDisabled();
+
     // io part
     ImGui::Separator();
     ImGui::BeginDisabled(m_pending != Pending::None);
@@ -161,39 +218,57 @@ static void drawMarker(Renderer& r, const Vec2& p)
     r.drawLine(p.x, p.y - 4, p.x, p.y + 4);
 }
 
-void Editor::draw(Renderer& r) const 
+void Editor::draw(Renderer& r) const
 {
     // Finished polylines (selected one highlighted)
     for (int i = 0; i < (int)m_terrain.polylines.size(); ++i)
     {
         const auto& pts = m_terrain.polylines[i].points;
         if (i == m_selected)
-            r.setColor(255, 200, 60);
+            r.setColor(255, 200, 60); // light-orange color
         else
-            r.setColor(220, 220, 220);
+            r.setColor(220, 220, 220); // light-gray color
 
         for (size_t k = 1; k < pts.size(); ++k)
-            r.drawLine(pts[k-1].x, pts[k-1].y, pts[k].x, pts[k].y);
+            r.drawLine(pts[k - 1].x, pts[k - 1].y, pts[k].x, pts[k].y);
     }
 
     // Polyline draw, preview segment to the cursor
     if (m_drawing)
     {
-        r.setColor(90, 200, 255);
+        r.setColor(90, 200, 255); // light-blue color
 
         const auto& pts = m_current.points;
         for (size_t k = 1; k < pts.size(); ++k)
-            r.drawLine(pts[k-1].x, pts[k-1].y, pts[k].x, pts[k].y);
+            r.drawLine(pts[k - 1].x, pts[k - 1].y, pts[k].x, pts[k].y);
 
         for (const auto& p : pts)
             drawMarker(r, p);
 
         if (!pts.empty())
         {
-            r.setColor(90, 200, 255, 120);
+            r.setColor(90, 200, 255, 120); // light-blue color, transp
 
             const InputState& in = r.input();
             r.drawLine(pts.back().x, pts.back().y, in.mouseX, in.mouseY);
+        }
+    }
+
+    // Rockets (selected one highlighted)
+    for (int i = 0; i < (int)m_rockets.size(); ++i)
+    {
+        const Rocket& rk = m_rockets[i];
+        if (i == m_selectedRocket)
+            r.setColor(120, 255, 140); // light-green color
+        else
+            r.setColor(200, 200, 200); // light-gray color
+
+        // convert rocket body point with rocket's pos, angle
+        for (int k = 0; k < 4; ++k)
+        {
+            Vec2 a = toWorld(rk, kHull[k]);
+            Vec2 b = toWorld(rk, kHull[(k + 1) % 4]);
+            r.drawLine(a.x, a.y, b.x, b.y);
         }
     }
 }

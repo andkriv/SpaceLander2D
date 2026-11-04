@@ -1,8 +1,10 @@
 #pragma once
 #include <string>
+#include <vector>
 
 #include "Renderer/Renderer.h"
 #include "SceneData/Terrain.h"
+#include "SceneData/Rocket.h"
 
 class Editor
 {
@@ -30,8 +32,12 @@ private:
     Terrain  m_terrain;
     Polyline m_current;
     int      m_selected = -1;
-    int      m_counter  = 0;
+    int      m_counter = 0;
 
     Pending     m_pending = Pending::None;
     std::string m_status;
+
+    std::vector<Rocket> m_rockets;
+    int m_selectedRocket = -1;
+    int m_rocketCounter = 0;
 };
