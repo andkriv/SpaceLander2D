@@ -10,6 +10,8 @@ struct Renderer::Impl
 {
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
+
+    InputState input;
 };
 
 Renderer::Renderer() : m_impl(new Impl)
@@ -65,13 +67,27 @@ void Renderer::shutdown()
 bool Renderer::pollEvents()
 {
     bool running = true;
+    m_impl->input.leftPressed = false;
+    m_impl->input.rightPressed = false;
+
     SDL_Event e;
     while (SDL_PollEvent(&e))
     {
         ImGui_ImplSDL3_ProcessEvent(&e);
         if (e.type == SDL_EVENT_QUIT)
             running = false;
+
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+        {
+            if (e.button.button == SDL_BUTTON_LEFT)
+                m_impl->input.leftPressed = true;
+
+            if (e.button.button == SDL_BUTTON_RIGHT)
+                m_impl->input.rightPressed = true;
+        }
     }
+    SDL_GetMouseState(&m_impl->input.mouseX, &m_impl->input.mouseY);
+
     return running;
 }
 
@@ -91,6 +107,11 @@ void Renderer::endFrame()
 
     ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), m_impl->renderer);
     SDL_RenderPresent(m_impl->renderer);
+}
+
+const InputState& Renderer::input() const
+{
+    return m_impl->input;
 }
 
 void Renderer::setColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
