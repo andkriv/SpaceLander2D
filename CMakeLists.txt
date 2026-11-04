@@ -16,12 +16,15 @@ FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG        v1.91.9
     GIT_SHALLOW    TRUE)
+FetchContent_Declare(json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
 
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(SDL3 imgui)
+FetchContent_MakeAvailable(SDL3 imgui json)
 
 add_subdirectory(Renderer)
 add_subdirectory(SceneData)
+add_subdirectory(SceneIO)
 add_subdirectory(SceneEditor)
 add_subdirectory(Scene)
 

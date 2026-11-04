@@ -1,14 +1,63 @@
 #include <imgui.h>
 
 #include "SceneEditor/Editor.h"
+#include "SceneIO/SceneIO.h"
 
 const Terrain& Editor::terrain() const
 {
     return m_terrain;
 }
 
+void Editor::setTerrain(Terrain t)
+{
+    m_terrain = std::move(t);
+    m_current = {};
+    m_drawing = false;
+    m_selected = m_terrain.polylines.empty() ? -1 : 0;
+    m_counter = (int)m_terrain.polylines.size();
+}
+
+void Editor::pollDialog(Renderer& r)
+{
+    if (m_pending == Pending::None)
+        return;
+
+    char buf[1024] = {};
+    DialogStatus s = r.pollFileDialog(buf, sizeof buf);
+    if (s == DialogStatus::None)
+        return;  // still open
+
+    if (s == DialogStatus::Picked)
+    {
+        std::string path = buf, err;
+        if (m_pending == Pending::Export)
+        {
+            if (path.size() < 5 || path.compare(path.size() - 5, 5, ".json") != 0)
+                path += ".json";
+            m_status = SceneIO::save(m_terrain, path, &err) ? "Exported: " + path
+                                                            : "Export failed: " + err;
+        }
+        else
+        {
+            Terrain t;
+            if (SceneIO::load(t, path, &err))
+            {
+                setTerrain(std::move(t));
+                m_status = "Imported: " + path;
+            }
+            else
+            {
+                m_status = "Import failed: " + err;
+            }
+        }
+    }
+    m_pending = Pending::None;
+}
+
 void Editor::update(Renderer& r)
 {
+    pollDialog(r);
+
     const InputState& in = r.input();
 
     if (m_drawing && in.leftPressed && !ImGui::GetIO().WantCaptureMouse)
@@ -58,7 +107,8 @@ void Editor::update(Renderer& r)
     ImGui::Separator();
 
     // Dropdown polylines selector
-    const char* preview = m_selected >= 0 ? m_terrain.polylines[m_selected].name.c_str() : "(none)";
+    const char* preview = m_selected >= 0 ? m_terrain.polylines[m_selected].name.c_str()
+                                          : "(none)";
 
     if (ImGui::BeginCombo("Polylines", preview))
     {
@@ -82,6 +132,25 @@ void Editor::update(Renderer& r)
         m_selected = -1;
     }
     ImGui::EndDisabled();
+
+    // io part
+    ImGui::Separator();
+    ImGui::BeginDisabled(m_pending != Pending::None);
+    if (ImGui::Button("Export..."))
+    {
+        m_pending = Pending::Export;
+        r.showFileDialog(DialogType::Save);
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Import..."))
+    {
+        m_pending = Pending::Import;
+        r.showFileDialog(DialogType::Open);
+    }
+    ImGui::EndDisabled();
+    if (!m_status.empty())
+        ImGui::TextWrapped("%s", m_status.c_str());
 
     ImGui::End();
 }

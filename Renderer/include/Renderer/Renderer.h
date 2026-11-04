@@ -10,6 +10,18 @@ struct InputState
     bool  rightPressed = false;
 };
 
+enum class DialogType
+{
+    Open,
+    Save
+};
+enum class DialogStatus
+{
+    None,
+    Picked,
+    Cancelled
+};
+
 // no STL or SDL types for interface, keeps DLL clean
 class RENDERER_API Renderer
 {
@@ -30,6 +42,9 @@ public:
 
     void setColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255);
     void drawLine(float x0, float y0, float x1, float y1);
+
+    void showFileDialog(DialogType type);
+    DialogStatus pollFileDialog(char* outPath, int capacity);   // consumes the result
 
 private:
     struct Impl;

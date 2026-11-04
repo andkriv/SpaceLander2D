@@ -1,3 +1,7 @@
+#include <mutex>
+#include <string>
+#include <cstring>
+
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlrenderer3.h>
@@ -12,6 +16,10 @@ struct Renderer::Impl
     SDL_Renderer* renderer = nullptr;
 
     InputState input;
+
+    std::mutex  dlgMutex;
+    std::string dlgPath;
+    int         dlgState = 0;   // 0 none, 1 picked, 2 cancelled
 };
 
 Renderer::Renderer() : m_impl(new Impl)
@@ -122,4 +130,46 @@ void Renderer::setColor(unsigned char r, unsigned char g, unsigned char b, unsig
 void Renderer::drawLine(float x0, float y0, float x1, float y1)
 {
     SDL_RenderLine(m_impl->renderer, x0, y0, x1, y1);
+}
+
+void Renderer::showFileDialog(DialogType type)
+{
+    static const SDL_DialogFileFilter filters[] = { { "Scene (*.json)", "json" } };
+
+    auto cb = [](void* ud, const char* const* files, int /*filter*/)
+    {
+        auto* im = static_cast<Impl*>(ud);
+        std::lock_guard<std::mutex> lk(im->dlgMutex);
+
+        if (files && files[0])
+        {
+            im->dlgPath = files[0];
+            im->dlgState = 1;
+        }
+        else
+        {
+            im->dlgState = 2; // cancelled or error
+        }
+    };
+
+    if (type == DialogType::Save)
+        SDL_ShowSaveFileDialog(cb, m_impl, m_impl->window, filters, 1, nullptr);
+    else
+        SDL_ShowOpenFileDialog(cb, m_impl, m_impl->window, filters, 1, nullptr, false);
+}
+
+DialogStatus Renderer::pollFileDialog(char* out, int cap)
+{
+    std::lock_guard<std::mutex> lk(m_impl->dlgMutex);
+    if (m_impl->dlgState == 0) return DialogStatus::None;
+
+    DialogStatus s = (m_impl->dlgState == 1) ? DialogStatus::Picked
+                                             : DialogStatus::Cancelled;
+    if (s == DialogStatus::Picked && cap > 0)
+    {
+        std::strncpy(out, m_impl->dlgPath.c_str(), cap - 1);
+        out[cap - 1] = '\0';
+    }
+    m_impl->dlgState = 0;
+    return s;
 }
