@@ -81,4 +81,53 @@ namespace Physics
         return b;
     }
 
+    // ---------- step ----------
+    StepInfo step(const RocketSpec& s, BodyState& b, const Input& in, const World& w, float dt)
+    {
+        StepInfo info;
+        const Vec2 v0 = b.vel;
+        MassProps mp = massProps(s, b.fuel);
+
+        // 1. thrust and fuel
+        float thrust = std::clamp(in.throttle, 0.0f, 1.0f) * s.maxThrust;
+        // m[kg/s] = Ft[N] / (Isp[s] * g0[m/s^2])
+        float burn = thrust / (s.isp * kG0) * dt;
+        if (b.fuel <= 0.0f)
+        {
+            thrust = 0.0f;
+            burn = 0.0f;
+        }
+        else if (burn > b.fuel) // account for fuel starvation
+        {
+            thrust *= b.fuel / burn;
+            burn = b.fuel;
+        }
+        b.fuel = std::max(0.0f, b.fuel - burn);
+
+        // 2. torque
+        // u vector nose direction
+        Vec2 nose{ std::sin(b.angle), -std::cos(b.angle) };
+        Vec2 F = nose * thrust;
+
+        Vec2 enginePos{ 0.0f, s.halfHeight };
+        Vec2 engineArm = rotate(enginePos - mp.com, b.angle);
+        // tau = r x F, and include RCS torque
+        float torque = cross(engineArm, F) + std::clamp(in.rotate, -1.0f, 1.0f) * s.maxTorque;
+
+        // 3. forces -> velocities (mass at the start of the step)
+        Vec2 acc = F * (1.0f / mp.mass) + w.gravity;
+        b.vel += acc * dt;
+        b.angVel += torque / mp.inertia * dt;
+
+        info.mass = mp.mass;
+        info.inertia = mp.inertia;
+        info.thrust = thrust;
+        info.fuelFlow = burn / dt;
+
+        mp = massProps(s, b.fuel); // upd after the burn
+
+        info.acc = (b.vel - v0) * (1.0f / dt);
+        return info;
+    }
+
 } // namespace Physics

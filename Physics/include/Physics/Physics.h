@@ -90,4 +90,6 @@ namespace Physics
     // state from the hull center (editor)
     BodyState makeState(const RocketSpec& s, Vec2 hullCenter, float angle, float fuelFraction = 1.0f);
 
+    StepInfo step(const RocketSpec& s, BodyState& b, const Input& in, const World& w, float dt);
+
 } // namespace Physics
