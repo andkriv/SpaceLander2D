@@ -4,6 +4,7 @@
 
 #include "SceneEditor/Editor.h"
 #include "SceneIO/SceneIO.h"
+#include "Physics/Physics.h"
 
 namespace
 {
@@ -21,6 +22,21 @@ namespace
         return { rk.pos.x + l.x * c - l.y * s,
                  rk.pos.y + l.x * s + l.y * c };
     }
+
+    // TODO: physics test, remove later
+    constexpr float kPxPerM = 10.0f;       // 1 m = 10 px; the editor hull (16/8/20 px) matches the spec
+    constexpr float kStep = 1.0f / 240.0f; // physics update rate
+
+    struct RocketPhysics
+    {
+        Physics::RocketSpec spec;
+        Physics::BodyState body; // from the editor's Rocket { pos (px), angle }:
+        Physics::StepInfo info;
+    };
+
+    std::vector<RocketPhysics> rkp;
+    float acc = 0; // Time Accumulator
+    Physics::World      world;
 }
 
 void Editor::controlRocket(float dt)
@@ -31,13 +47,30 @@ void Editor::controlRocket(float dt)
     Rocket& rk = m_rockets[m_selectedRocket];
 
     auto axis = [](ImGuiKey pos, ImGuiKey neg)
-        {
-            return (float)ImGui::IsKeyDown(pos) - (float)ImGui::IsKeyDown(neg);
-        };
+    {
+        return (float)ImGui::IsKeyDown(pos) - (float)ImGui::IsKeyDown(neg);
+    };
 
-    rk.pos.x += axis(ImGuiKey_D, ImGuiKey_A) * kMoveSpeed * dt;
-    rk.pos.y += axis(ImGuiKey_S, ImGuiKey_W) * kMoveSpeed * dt;
-    rk.angle += axis(ImGuiKey_E, ImGuiKey_Q) * kTurnSpeed * dt;
+    //rk.pos.x += axis(ImGuiKey_D, ImGuiKey_A) * kMoveSpeed * dt;
+    //rk.pos.y += axis(ImGuiKey_S, ImGuiKey_W) * kMoveSpeed * dt;
+    //rk.angle += axis(ImGuiKey_E, ImGuiKey_Q) * kTurnSpeed * dt;
+
+    for (int i = 0; i < (int)m_rockets.size(); i++)
+    {
+        acc += dt; //frame time accum
+        while (acc >= kStep)
+        {
+            Physics::Input in;
+            if (i == m_selectedRocket)
+            {
+                in.throttle = ImGui::IsKeyDown(ImGuiKey_W) ? 1.0f : 0.0f;
+                in.rotate = (float)ImGui::IsKeyDown(ImGuiKey_E) - (float)ImGui::IsKeyDown(ImGuiKey_Q);
+            }
+
+            rkp[i].info = Physics::step(rkp[i].spec, rkp[i].body, in, world, kStep);
+            acc -= kStep;
+        }
+    }
 }
 
 const Terrain& Editor::terrain() const
@@ -57,6 +90,15 @@ void Editor::setScene(Scene s)
 
     m_selectedRocket = m_rockets.empty() ? -1 : 0;
     m_rocketCounter = (int)m_rockets.size();
+
+    rkp.clear();
+    world.setTerrain(m_terrain, 1.0f / kPxPerM);
+    for (const auto& rk : m_rockets)
+    {
+        RocketPhysics rp;
+        rp.body = Physics::makeState(rp.spec, { rk.pos.x / kPxPerM, rk.pos.y / kPxPerM }, rk.angle);
+        rkp.push_back(std::move(rp));
+    }
 }
 
 void Editor::pollDialog(Renderer& r)
@@ -125,6 +167,7 @@ void Editor::update(Renderer& r)
         {
             m_current.name = "Polyline " + std::to_string(++m_counter);
             m_terrain.polylines.push_back(std::move(m_current));
+            world.setTerrain(m_terrain, 1.0f / kPxPerM);
 
             m_selected = (int)m_terrain.polylines.size() - 1;
             m_current = {};
@@ -175,6 +218,7 @@ void Editor::update(Renderer& r)
     {
         m_terrain.polylines.erase(m_terrain.polylines.begin() + m_selected);
         m_selected = -1;
+        world.setTerrain(m_terrain, 1.0f / kPxPerM);
     }
     ImGui::EndDisabled();
 
@@ -186,6 +230,10 @@ void Editor::update(Renderer& r)
         rk.name = "Rocket " + std::to_string(++m_rocketCounter);
         rk.pos = { 400.0f + 60.0f * (m_rocketCounter - 1), 200.0f };
 
+        RocketPhysics rp;
+        rp.body = Physics::makeState(rp.spec, { rk.pos.x / kPxPerM, rk.pos.y / kPxPerM }, rk.angle);
+
+        rkp.push_back(std::move(rp));
         m_rockets.push_back(std::move(rk));
         m_selectedRocket = (int)m_rockets.size() - 1;
     }
@@ -210,6 +258,8 @@ void Editor::update(Renderer& r)
     ImGui::BeginDisabled(m_selectedRocket < 0);
     if (ImGui::Button("Remove selected##rocket"))
     {
+        rkp.erase(rkp.begin() + m_selectedRocket);
+
         m_rockets.erase(m_rockets.begin() + m_selectedRocket);
         m_selectedRocket = -1;
     }
@@ -236,6 +286,30 @@ void Editor::update(Renderer& r)
     if (!m_status.empty())
         ImGui::TextWrapped("%s", m_status.c_str());
 
+    // TODO: rocket physics data, remove later
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+    ImVec2 window_pos;
+    window_pos.x = viewport->WorkPos.x + viewport->WorkSize.x - 10.0f;
+    window_pos.y = viewport->WorkPos.y + 10.0f;
+
+    ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+
+    ImGui::Begin("Rockets Info");
+    for (int i = 0; i < (int)m_rockets.size(); i++)
+    {
+        ImGui::Text("%s telemetry = Vv: %.2f, Vh: %.2f, Av:  %.2f, Ah: %.2f, Mb = %.2f, Mf: %.2f",
+            m_rockets[i].name.c_str(),
+            -rkp[i].body.vel.y,
+            rkp[i].body.vel.x,
+            rkp[i].info.acc.y,
+            rkp[i].info.acc.x,
+            rkp[i].info.mass,
+            rkp[i].body.fuel);
+    }
+    ImGui::End();
+
+    // ImGui::ShowMetricsWindow();
     ImGui::End();
 }
 
@@ -293,8 +367,8 @@ void Editor::draw(Renderer& r) const
         // convert rocket body point with rocket's pos, angle
         for (int k = 0; k < 4; ++k)
         {
-            Vec2 a = toWorld(rk, kHull[k]);
-            Vec2 b = toWorld(rk, kHull[(k + 1) % 4]);
+            Vec2 a = Physics::toWorld(rkp[i].spec, rkp[i].body, hullLocal(rkp[i].spec)[k]) * kPxPerM;
+            Vec2 b = Physics::toWorld(rkp[i].spec, rkp[i].body, hullLocal(rkp[i].spec)[(k + 1) % 4]) * kPxPerM;
             r.drawLine(a.x, a.y, b.x, b.y);
         }
     }
