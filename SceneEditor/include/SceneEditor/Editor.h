@@ -15,6 +15,8 @@ public:
     const Terrain& terrain() const;
     void setScene(Scene s);
 
+    Scene scene() const;
+
 private:
     enum class Pending
     {

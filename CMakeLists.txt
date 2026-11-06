@@ -27,6 +27,7 @@ add_subdirectory(SceneData)
 add_subdirectory(SceneIO)
 add_subdirectory(SceneEditor)
 add_subdirectory(Physics)
+add_subdirectory(SceneExecution)
 add_subdirectory(Scene)
 
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Scene)
