@@ -54,6 +54,9 @@ namespace Physics
     struct World
     {
         Vec2  gravity{ 0.0f, 9.81f };// [m/s^2], +y is down
+        float restitution = 0.1f;    // 0 = no bounce, 1 = perfectly elastic
+        float friction = 0.7f;       // Coulomb friction coefficient
+
         std::vector<Segment> terrain;
 
         void setTerrain(const Terrain& t, float metersPerUnit);
