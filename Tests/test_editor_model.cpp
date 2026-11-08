@@ -162,8 +162,8 @@ TEST_CASE("adding rockets", "[editor][rocket]")
     REQUIRE(m.rockets().size() == 2);
     CHECK(m.rockets()[0].name == "Rocket 1");
     CHECK(m.rockets()[1].name == "Rocket 2");
-    CHECK(m.rockets()[0].pos.x == Approx(300.0f));
-    CHECK(m.rockets()[1].pos.x == Approx(360.0f)); // shift, not overlaping
+    CHECK(m.rockets()[0].pos.x == Approx(400.0f));
+    CHECK(m.rockets()[1].pos.x == Approx(460.0f)); // shift, not overlaping
     CHECK(m.rockets()[0].pos.y == Approx(200.0f));
     CHECK(m.selectedRocket() == 1); // newest selected
 }
@@ -210,10 +210,10 @@ TEST_CASE("moving the selected rocket", "[editor][rocket]")
 
     m.selectRocket(0);
     CHECK(m.moveSelectedRocket({ 10, -5 }, 0.5f));
-    CHECK(m.rockets()[0].pos.x == Approx(310.0f));
+    CHECK(m.rockets()[0].pos.x == Approx(410.0f));
     CHECK(m.rockets()[0].pos.y == Approx(195.0f));
     CHECK(m.rockets()[0].angle == Approx(0.5f));
-    CHECK(m.rockets()[1].pos.x == Approx(360.0f)); // others untouched
+    CHECK(m.rockets()[1].pos.x == Approx(460.0f)); // others untouched
     CHECK(m.rockets()[1].angle == 0.0f);
 }
 
