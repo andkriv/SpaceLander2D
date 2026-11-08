@@ -1,0 +1,2 @@
+add_library(RenderApi INTERFACE)
+target_include_directories(RenderApi INTERFACE include)

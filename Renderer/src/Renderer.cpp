@@ -85,8 +85,17 @@ bool Renderer::pollEvents()
         if (e.type == SDL_EVENT_QUIT)
             running = false;
 
+        if (e.type == SDL_EVENT_MOUSE_MOTION)
+        {
+            m_impl->input.mouseX = e.motion.x;
+            m_impl->input.mouseY = e.motion.y;
+        }
+
         if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
         {
+            m_impl->input.mouseX = e.button.x;
+            m_impl->input.mouseY = e.button.y;
+
             if (e.button.button == SDL_BUTTON_LEFT)
                 m_impl->input.leftPressed = true;
 
@@ -94,7 +103,6 @@ bool Renderer::pollEvents()
                 m_impl->input.rightPressed = true;
         }
     }
-    SDL_GetMouseState(&m_impl->input.mouseX, &m_impl->input.mouseY);
 
     return running;
 }
@@ -172,4 +180,26 @@ DialogStatus Renderer::pollFileDialog(char* out, int cap)
     }
     m_impl->dlgState = 0;
     return s;
+}
+
+bool Renderer::readPixel(int x, int y, unsigned char out[4]) const
+{
+    SDL_Rect rc{ x, y, 1, 1 };
+    SDL_Surface* s = SDL_RenderReadPixels(m_impl->renderer, &rc);
+
+    if (!s)
+        return false;
+
+    Uint8 r, g, b, a;
+    bool ok = SDL_ReadSurfacePixel(s, 0, 0, &r, &g, &b, &a);
+    SDL_DestroySurface(s);
+
+    if (ok)
+    {
+        out[0] = r;
+        out[1] = g;
+        out[2] = b;
+        out[3] = a;
+    }
+    return ok;
 }

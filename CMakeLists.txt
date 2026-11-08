@@ -18,10 +18,15 @@ FetchContent_Declare(imgui
     GIT_SHALLOW    TRUE)
 FetchContent_Declare(json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
+FetchContent_Declare(Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG        v3.7.1
+    GIT_SHALLOW    TRUE)
 
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(SDL3 imgui json)
+FetchContent_MakeAvailable(SDL3 imgui json Catch2)
 
+add_subdirectory(RenderApi)
 add_subdirectory(Renderer)
 add_subdirectory(SceneData)
 add_subdirectory(SceneIO)
@@ -31,4 +36,8 @@ add_subdirectory(Simulation)
 add_subdirectory(SceneEditor)
 add_subdirectory(SceneExecution)
 add_subdirectory(Scene)
+
+enable_testing()
+add_subdirectory(Tests)
+
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Scene)

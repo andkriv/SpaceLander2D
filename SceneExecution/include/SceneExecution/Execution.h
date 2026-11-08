@@ -9,9 +9,12 @@ class Execution
 {
 public:
     void start(const Scene& s);
-    void update(Renderer& r);
-    void draw(Renderer& r) const;
+    void update(IDrawTarget& r);
+    void draw(IDrawTarget& r) const;
     bool wantsStop() const;
+
+    Simulation& sim();
+    bool paused() const;
 
 private:
     void reset();

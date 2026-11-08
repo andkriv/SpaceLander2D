@@ -9,11 +9,21 @@ namespace
     constexpr float kStep       = 1.0f / 240.0f; // physics update rate, with kSkin - 0.02*240 = 4.8 m/s, g*dt=0.04 m/s
     constexpr float kCrashSpeed = 8.0f;          // [m/s] closing speed on contact
 
-    void drawLine(Renderer& r, Vec2 a, Vec2 b)
+    void drawLine(IDrawTarget& r, Vec2 a, Vec2 b)
     {
         // physics world to sceen
         r.drawLine(a.x * kPxPerM, a.y * kPxPerM, b.x * kPxPerM, b.y * kPxPerM);
     }
+}
+
+Simulation& Execution::sim()
+{
+    return m_sim;
+}
+
+bool Execution::paused() const
+{
+    return m_paused;
 }
 
 bool Execution::wantsStop() const
@@ -32,7 +42,7 @@ void Execution::reset()
     m_sim.reset();
 }
 
-void Execution::update(Renderer&)
+void Execution::update(IDrawTarget&)
 {
     ImGuiIO& io = ImGui::GetIO();
 
@@ -93,7 +103,7 @@ void Execution::update(Renderer&)
     ImGui::End();
 }
 
-void Execution::draw(Renderer& r) const
+void Execution::draw(IDrawTarget& r) const
 {
     // terrain
     r.setColor(220, 220, 220); // light-gray color
