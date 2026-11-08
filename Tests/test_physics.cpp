@@ -195,6 +195,85 @@ TEST_CASE("free flight -> no contact", "[gravity]")
     CHECK(info.impactSpeed == 0.0f);
 }
 
+// ---------------- thrust ----------------
+
+TEST_CASE("thrust acceleration is thrust / mass, measured in info.acc", "[thrust]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 1.0f;
+    BodyState b = makeState(s, { 0, 0 }, 0);
+    StepInfo info = step(s, b, in, w, kDt);
+
+    CHECK(info.thrust == Approx(25000.0f));
+    CHECK(info.mass == Approx(1500.0f));
+    CHECK(info.acc.y == Approx(-25000.0f / 1500.0f).epsilon(0.001)); // nose up = -y
+    CHECK(info.acc.x == Approx(0.0f).margin(1e-3));
+}
+
+TEST_CASE("thrust follows the nose direction", "[thrust]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 1.0f;
+
+    SECTION("pointing right")
+    {
+        BodyState b = makeState(s, { 0, 0 }, kPi / 2);
+        for (int i = 0; i < 60; ++i)
+            step(s, b, in, w, kDt);
+
+        CHECK(b.vel.x > 3.0f);
+        CHECK(std::fabs(b.vel.y) < 0.01f);
+    }
+    SECTION("pointing down")
+    {
+        BodyState b = makeState(s, { 0, 0 }, kPi);
+        for (int i = 0; i < 60; ++i)
+            step(s, b, in, w, kDt);
+
+        CHECK(b.vel.y > 3.0f);
+    }
+    SECTION("45 degrees splits into components")
+    {
+        BodyState b = makeState(s, { 0, 0 }, kPi / 4);
+        for (int i = 0; i < 60; ++i)
+            step(s, b, in, w, kDt);
+
+        CHECK(b.vel.x > 0.0f);
+        CHECK(b.vel.y < 0.0f);
+        CHECK(b.vel.x == Approx(-b.vel.y).epsilon(0.01));
+    }
+}
+
+TEST_CASE("throttle is clamped to [0, 1]", "[thrust]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    BodyState b = makeState(s, { 0, 0 }, 0);
+    Input in;
+    in.throttle = 5.0f;
+
+    CHECK(step(s, b, in, w, kDt).thrust == Approx(s.maxThrust));
+    in.throttle = -1.0f;
+    CHECK(step(s, b, in, w, kDt).thrust == 0.0f);
+}
+
+TEST_CASE("main engine on the axis produces no torque", "[thrust]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 1.0f;
+    BodyState b = makeState(s, { 0, 0 }, 0.4f);
+    for (int i = 0; i < 240; ++i)
+        step(s, b, in, w, kDt);
+
+    CHECK(b.angVel == Approx(0.0f).margin(1e-4));
+}
+
 // ---------------- terrain conversion ----------------
 
 TEST_CASE("World::setTerrain builds scaled segments", "[terrain]")
