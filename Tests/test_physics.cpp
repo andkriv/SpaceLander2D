@@ -697,3 +697,49 @@ TEST_CASE("degenerate terrain does not break the step", "[collision]")
     CHECK(std::isfinite(b.pos.x));
     CHECK(std::isfinite(b.pos.y));
 }
+
+// ---------------- robustness ----------------
+
+TEST_CASE("long run with mixed input stays finite and bounded", "[robustness]")
+{
+    RocketSpec s;
+    World w = flatGround(10);
+    BodyState b = makeState(s, { 0, 7.0f }, 0);
+
+    bool ok = true;
+    for (int i = 0; i < 20000; ++i)
+    {
+        Input in;
+        in.throttle = ((i / 300) % 2) ? 1.0f : 0.0f;
+        in.rotate = std::sin(i * 0.01f);
+
+        step(s, b, in, w, kDt);
+        ok = ok && std::isfinite(b.pos.x) && std::isfinite(b.pos.y)
+                && std::isfinite(b.vel.x) && std::isfinite(b.vel.y)
+                && std::isfinite(b.angle) && std::isfinite(b.angVel)
+                && b.fuel >= 0.0f         && b.fuel <= s.fuelCapacity
+                && std::fabs(b.angle) <= kPi + 1e-4f;
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("the step is deterministic", "[robustness]")
+{
+    RocketSpec s;
+    World w = flatGround(10);
+    BodyState a = makeState(s, { 0, 2 }, 0.2f), b = a;
+
+    for (int i = 0; i < 2000; ++i)
+    {
+        Input in;
+        in.throttle = (i % 400 < 100) ? 1.0f : 0.0f;
+        in.rotate = 0.3f;
+
+        step(s, a, in, w, kDt);
+        step(s, b, in, w, kDt);
+    }
+
+    CHECK(a.pos.x == b.pos.x);  CHECK(a.pos.y == b.pos.y);
+    CHECK(a.vel.x == b.vel.x);  CHECK(a.vel.y == b.vel.y);
+    CHECK(a.angle == b.angle);  CHECK(a.fuel == b.fuel);
+}
