@@ -388,6 +388,92 @@ TEST_CASE("thrust is scaled down (tank runs dry)", "[fuel]")
     CHECK(info.thrust == Approx(s.maxThrust * 0.01f / fullBurn).epsilon(0.001));
 }
 
+// ---------------- rot, I ----------------
+
+TEST_CASE("rotation input applies torque / inertia", "[rotation]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    BodyState b = makeState(s, { 0, 0 }, 0);
+    Input in;
+    in.rotate = 1.0f;
+
+    step(s, b, in, w, kDt);
+    CHECK(b.angVel == Approx(s.maxTorque / 2183.33f * kDt).epsilon(0.001));
+    CHECK(b.angVel > 0.0f);
+
+    BodyState c = makeState(s, { 0, 0 }, 0);
+    in.rotate = -1.0f;
+    step(s, c, in, w, kDt);
+
+    CHECK(c.angVel == Approx(-b.angVel).epsilon(1e-4));
+}
+
+TEST_CASE("rotation input is clamped, zero = no torque", "[rotation]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    BodyState a = makeState(s, { 0, 0 }, 0), b = makeState(s, { 0, 0 }, 0);
+    Input big;
+    big.rotate = 3.0f;
+
+    Input one;
+    one.rotate = 1.0f;
+
+    step(s, a, big, w, kDt);
+    step(s, b, one, w, kDt);
+
+    CHECK(a.angVel == Approx(b.angVel));
+
+    BodyState c = makeState(s, { 0, 0 }, 0);
+    step(s, c, Input{}, w, kDt);
+
+    CHECK(c.angVel == 0.0f);
+}
+
+TEST_CASE("heavier rocket turns slower (inertia)", "[rotation]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.rotate = 1.0f;
+
+    BodyState full = makeState(s, { 0, 0 }, 0, 1.0f);
+    BodyState empty = makeState(s, { 0, 0 }, 0, 0.0f);
+
+    step(s, full, in, w, kDt);
+    step(s, empty, in, w, kDt);
+
+    CHECK(full.angVel < empty.angVel);
+}
+
+TEST_CASE("angular velocity persists with no torque", "[rotation]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    BodyState b = makeState(s, { 0, 0 }, 0);
+    b.angVel = 0.5f;
+
+    for (int i = 0; i < 240; ++i)
+        step(s, b, Input{}, w, kDt);
+
+    CHECK(b.angVel == Approx(0.5f));
+}
+
+TEST_CASE("angle is wrapped to [-pi, pi]", "[rotation]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    BodyState b = makeState(s, { 0, 0 }, 0);
+    b.angVel = 10.0f;
+
+    for (int i = 0; i < 480; ++i)
+    {
+        step(s, b, Input{}, w, kDt);
+        REQUIRE(std::fabs(b.angle) <= kPi + 1e-4f);
+    }
+}
+
 // ---------------- terrain conversion ----------------
 
 TEST_CASE("World::setTerrain builds scaled segments", "[terrain]")
