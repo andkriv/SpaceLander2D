@@ -2,38 +2,28 @@
 #include <string>
 #include <vector>
 
-#include "Renderer/Renderer.h"
+#include "RenderApi/RenderApi.h"
 #include "EditorModel/EditorModel.h"
+#include "EditorModel/SceneFileFlow.h"
 #include "SceneData/Rocket.h"
 
 class Editor
 {
 public:
-    void update(Renderer& r);
-    void draw(Renderer& r) const;
+    void update(IDrawTarget& view, IFileDialog& dialog);
+    void draw(IDrawTarget& view) const;
 
     const Terrain& terrain() const;
     void setScene(Scene s);
 
     Scene scene() const;
+    EditorModel& model();
+    const EditorModel& model() const;
 
 private:
-    enum class Pending
-    {
-        None,
-        Import,
-        Export
-    };
-
-private:
-    void pollDialog(Renderer& r);
-
     void controlRocket(float dt);
 
 private:
-
-    Pending     m_pending = Pending::None;
-    std::string m_status;
-
     EditorModel m_model;
+    SceneFileFlow m_files;
 };

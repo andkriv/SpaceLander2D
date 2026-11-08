@@ -25,7 +25,7 @@ int main(int, char**) {
 
         if (mode == Mode::Edit)
         {
-            editor.update(r);
+            editor.update(r, r);
             editor.draw(r);
 
             ImGui::Begin("Mode");

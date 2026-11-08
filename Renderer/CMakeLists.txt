@@ -13,7 +13,7 @@ target_include_directories(Renderer
     PUBLIC  include ${imgui_SOURCE_DIR}
     PRIVATE ${imgui_SOURCE_DIR}/backends)
 
-target_link_libraries(Renderer PRIVATE SDL3::SDL3)
+target_link_libraries(Renderer PUBLIC RenderApi PRIVATE SDL3::SDL3)
 
 target_compile_definitions(Renderer
     PRIVATE   RENDERER_EXPORTS IMGUI_API=__declspec\(dllexport\)

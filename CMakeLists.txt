@@ -26,6 +26,7 @@ FetchContent_Declare(Catch2
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SDL3 imgui json Catch2)
 
+add_subdirectory(RenderApi)
 add_subdirectory(Renderer)
 add_subdirectory(SceneData)
 add_subdirectory(SceneIO)

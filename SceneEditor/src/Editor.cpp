@@ -53,47 +53,22 @@ void Editor::setScene(Scene s)
     m_model.setScene(s);
 }
 
-void Editor::pollDialog(Renderer& r)
+EditorModel& Editor::model()
 {
-    if (m_pending == Pending::None)
-        return;
-
-    char buf[1024] = {};
-    DialogStatus s = r.pollFileDialog(buf, sizeof buf);
-    if (s == DialogStatus::None)
-        return;  // still open
-
-    if (s == DialogStatus::Picked)
-    {
-        std::string path = buf, err;
-        if (m_pending == Pending::Export)
-        {
-            if (path.size() < 5 || path.compare(path.size() - 5, 5, ".json") != 0)
-                path += ".json";
-
-            m_status = SceneIO::save(m_model.scene(), path, &err) ? "Exported: " + path
-                                                                  : "Export failed: " + err;
-        }
-        else
-        {
-            Scene s;
-            if (SceneIO::load(s, path, &err))
-            {
-                setScene(std::move(s));
-                m_status = "Imported: " + path;
-            }
-            else
-            {
-                m_status = "Import failed: " + err;
-            }
-        }
-    }
-    m_pending = Pending::None;
+    return m_model;
 }
 
-void Editor::update(Renderer& r)
+const EditorModel& Editor::model() const
 {
-    pollDialog(r);
+    return m_model;
+}
+
+void Editor::update(IDrawTarget& r, IFileDialog& dialog)
+{
+    Scene imported;
+    if (m_files.poll(dialog, m_model.scene(), imported) == SceneFileFlow::Result::Imported)
+        m_model.setScene(std::move(imported));
+
     controlRocket(ImGui::GetIO().DeltaTime);
 
     const InputState& in = r.input();
@@ -196,33 +171,30 @@ void Editor::update(Renderer& r)
 
     // io part
     ImGui::Separator();
-    ImGui::BeginDisabled(m_pending != Pending::None);
+
+    ImGui::BeginDisabled(m_files.busy());
     if (ImGui::Button("Export..."))
-    {
-        m_pending = Pending::Export;
-        r.showFileDialog(DialogType::Save);
-    }
+        m_files.requestExport(dialog);
 
     ImGui::SameLine();
+
     if (ImGui::Button("Import..."))
-    {
-        m_pending = Pending::Import;
-        r.showFileDialog(DialogType::Open);
-    }
+        m_files.requestImport(dialog);
+
     ImGui::EndDisabled();
-    if (!m_status.empty())
-        ImGui::TextWrapped("%s", m_status.c_str());
+    if (!m_files.status().empty())
+        ImGui::TextWrapped("%s", m_files.status().c_str());
 
     ImGui::End();
 }
 
-static void drawMarker(Renderer& r, const Vec2& p)
+static void drawMarker(IDrawTarget& r, const Vec2& p)
 {
     r.drawLine(p.x - 4, p.y, p.x + 4, p.y);
     r.drawLine(p.x, p.y - 4, p.x, p.y + 4);
 }
 
-void Editor::draw(Renderer& r) const
+void Editor::draw(IDrawTarget& r) const
 {
     // Finished polylines (selected one highlighted)
     for (int i = 0; i < (int)m_model.terrain().polylines.size(); ++i)
