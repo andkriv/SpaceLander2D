@@ -284,7 +284,7 @@ TEST_CASE("import/export btns open the matching dialog, lock while busy", "[ui][
 
     ui.press(body, "Terrain Editor", "Export...");
     CHECK(dlg.shown == 1);
-    CHECK(dlg.lastKind == DialogType::Save);
+    CHECK(dlg.lastType == DialogType::Save);
 
     ui.press(body, "Terrain Editor", "Import..."); // first is open, disabled
     CHECK(dlg.shown == 1);

@@ -62,14 +62,14 @@ struct TestDialog : IFileDialog
     int shown = 0;
     int polls = 0;
 
-    DialogType   lastKind = DialogType::Open;
+    DialogType   lastType = DialogType::Open;
     DialogStatus next = DialogStatus::None; // user acts consumed by one poll
     std::string  path;
 
     void showFileDialog(DialogType t) override
     {
         ++shown;
-        lastKind = t;
+        lastType = t;
     }
 
     DialogStatus pollFileDialog(char* out, int cap) override
