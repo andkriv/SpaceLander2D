@@ -274,6 +274,120 @@ TEST_CASE("main engine on the axis produces no torque", "[thrust]")
     CHECK(b.angVel == Approx(0.0f).margin(1e-4));
 }
 
+// -------------- fuel burn ---------------
+
+TEST_CASE("fuel burn rate is thrust / (Isp * g0)", "[fuel]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 0.5f;
+    BodyState b = makeState(s, { 0, 0 }, 0);
+
+    float f0 = b.fuel;
+    for (int i = 0; i < 240; ++i) // 1s
+        step(s, b, in, w, kDt); 
+    float expected = 0.5f * s.maxThrust / (s.isp * kG0);
+
+    CHECK(f0 - b.fuel == Approx(expected).epsilon(0.001));
+}
+
+TEST_CASE("no fuel is burned at zero throttle", "[fuel]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    BodyState b = makeState(s, { 0, 0 }, 0);
+
+    float f0 = b.fuel;
+    for (int i = 0; i < 100; ++i)
+        step(s, b, in, w, kDt);
+
+    CHECK(b.fuel == f0);
+}
+
+TEST_CASE("mass decreases while burning", "[fuel]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 1.0f;
+    BodyState b = makeState(s, { 0, 0 }, 0);
+
+    float prev = 1e30f;
+    for (int i = 0; i < 200; ++i)
+    {
+        StepInfo info = step(s, b, in, w, kDt);
+        CHECK(info.mass <= prev);
+        prev = info.mass;
+    }
+
+    CHECK(prev < 1500.0f);
+}
+
+TEST_CASE("same thrust accelerates a lighter rocket more", "[fuel]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 1.0f;
+    BodyState full = makeState(s, { 0, 0 }, 0, 1.0f);
+    BodyState empty = makeState(s, { 0, 0 }, 0, 0.1f);
+    StepInfo a = step(s, full, in, w, kDt);
+    StepInfo e = step(s, empty, in, w, kDt);
+
+    CHECK(std::fabs(e.acc.y) > std::fabs(a.acc.y));
+}
+
+TEST_CASE("dV = Tsiolkovsky eq", "[fuel]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 1.0f;
+    BodyState b = makeState(s, { 0, 0 }, 0);
+
+    float m0 = s.dryMass + b.fuel;
+    for (int i = 0; i < 2400; ++i) // 10s
+        step(s, b, in, w, kDt);
+    float m1 = s.dryMass + b.fuel;
+    float dV = s.isp * kG0 * std::log(m0 / m1);
+
+    CHECK(-b.vel.y == Approx(dV).epsilon(0.005));
+}
+
+TEST_CASE("empty tank -> no thrust", "[fuel]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 1.0f;
+    BodyState b = makeState(s, { 0, 0 }, 0, 0.0f);
+    StepInfo info = step(s, b, in, w, kDt);
+
+    CHECK(info.thrust == 0.0f);
+    CHECK(b.vel.y == 0.0f);
+    CHECK(b.fuel == 0.0f);
+}
+
+TEST_CASE("thrust is scaled down (tank runs dry)", "[fuel]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    in.throttle = 1.0f;
+    BodyState b = makeState(s, { 0, 0 }, 0);
+    b.fuel = 0.01f;
+
+    float fullBurn = s.maxThrust / (s.isp * kG0) * kDt;
+    StepInfo info = step(s, b, in, w, kDt);
+
+    CHECK(b.fuel == 0.0f);
+    CHECK(info.thrust > 0.0f);
+    CHECK(info.thrust < s.maxThrust);
+    CHECK(info.thrust == Approx(s.maxThrust * 0.01f / fullBurn).epsilon(0.001));
+}
+
 // ---------------- terrain conversion ----------------
 
 TEST_CASE("World::setTerrain builds scaled segments", "[terrain]")
