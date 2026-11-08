@@ -23,25 +23,13 @@ bool Execution::wantsStop() const
 
 void Execution::start(const Scene& s)
 {
-    m_scene = s; // for reset
-    m_world.setTerrain(s.terrain, 1.0f / kPxPerM);
+    m_sim.start(s);
     m_stop = false;
-    reset();
 }
 
 void Execution::reset()
 {
-    m_rockets.clear();
-    for (const Rocket& rk : m_scene.rockets)
-    {
-        RocketData rd;
-        rd.name  = rk.name;
-        rd.state = Physics::makeState(m_spec, { rk.pos.x / kPxPerM, rk.pos.y / kPxPerM }, rk.angle);
-        m_rockets.push_back(std::move(rd));
-    }
-    m_selRocket = m_rockets.empty() ? -1 : 0;
-    m_acc = 0.0;
-    // don't reset g
+    m_sim.reset();
 }
 
 void Execution::update(Renderer&)
@@ -57,21 +45,8 @@ void Execution::update(Renderer&)
 
     // fix-step sim
     if (!m_paused)
-    { // 20fps, clamp so a stall doesn't cause spiral of death (sim takes more time then sim step), but lose time
-        m_acc += std::min(io.DeltaTime, 0.05f);
-        while (m_acc >= kStep)
-        {
-            for (int i = 0; i < (int)m_rockets.size(); ++i)
-            {
-                RocketData& rd = m_rockets[i];
-                Physics::Input ri = (i == m_selRocket) ? in : Physics::Input{};
-                rd.throttle = ri.throttle;
-                rd.info = Physics::step(m_spec, rd.state, ri, m_world, kStep);
-                if (rd.info.impactSpeed > kCrashSpeed)
-                    rd.is_crashed = true;
-            }
-            m_acc -= kStep;
-        }
+    {
+        m_sim.step(io.DeltaTime, in);
     }
 
     // rocket ui
@@ -86,26 +61,26 @@ void Execution::update(Renderer&)
     ImGui::SameLine();
     ImGui::Checkbox("Pause", &m_paused);
 
-    ImGui::SliderFloat("G [m/s^2]", &m_world.gravity.y, 0.0f, 25.0f);
+    ImGui::SliderFloat("G [m/s^2]", &m_sim.world().gravity.y, 0.0f, 25.0f);
 
-    const char* prev = m_selRocket >= 0 ? m_rockets[m_selRocket].name.c_str()
-                                      : "(none)";
+    const char* prev = m_sim.selectedRocket() >= 0 ? m_sim.rockets()[m_sim.selectedRocket()].name.c_str()
+                                                   : "(none)";
     if (ImGui::BeginCombo("Rocket", prev))
     {
-        for (int i = 0; i < (int)m_rockets.size(); ++i)
-            if (ImGui::Selectable(m_rockets[i].name.c_str(), i == m_selRocket))
-                m_selRocket = i;
+        for (int i = 0; i < (int)m_sim.rockets().size(); ++i)
+            if (ImGui::Selectable(m_sim.rockets()[i].name.c_str(), i == m_sim.selectedRocket()))
+                m_sim.selectRocket(i);
         ImGui::EndCombo();
     }
 
-    if (m_selRocket >= 0)
+    if (m_sim.selectedRocket() >= 0)
     {
-        const RocketData& rd = m_rockets[m_selRocket];
+        const Simulation::RocketData& rd = m_sim.selectedRocketData();
         ImGui::Separator();
         ImGui::TextDisabled("W thrust, Q/E rotate");
         ImGui::Text(        "Mass    %.1f kg", rd.info.mass);
-        ImGui::Text(        "Fuel    %.1f / %.0f kg", rd.state.fuel, m_spec.fuelCapacity);
-        ImGui::ProgressBar(rd.state.fuel / m_spec.fuelCapacity, ImVec2(-1, 0));
+        ImGui::Text(        "Fuel    %.1f / %.0f kg", rd.state.fuel, m_sim.spec().fuelCapacity);
+        ImGui::ProgressBar(rd.state.fuel / m_sim.spec().fuelCapacity, ImVec2(-1, 0));
         ImGui::Text(        "Thrust  %.0f N", rd.info.thrust);
         ImGui::Text(        "Vh      %.2f m/s", rd.state.vel.x);
         ImGui::Text(        "Vv      %.2f m/s (up+)", -rd.state.vel.y);
@@ -122,33 +97,33 @@ void Execution::draw(Renderer& r) const
 {
     // terrain
     r.setColor(220, 220, 220); // light-gray color
-    for (const auto& sg : m_world.terrain)
+    for (const auto& sg : m_sim.world().terrain)
         drawLine(r, sg.a, sg.b);
 
     // rockets
-    auto hull = Physics::hullLocal(m_spec);
-    for (unsigned i = 0; i < (unsigned)m_rockets.size(); ++i)
+    auto hull = Physics::hullLocal(m_sim.spec());
+    for (unsigned i = 0; i < (unsigned)m_sim.rockets().size(); ++i)
     {
-        const RocketData& rd = m_rockets[i];
+        const Simulation::RocketData& rd = m_sim.rockets()[i];
         if (rd.is_crashed)
             r.setColor(255, 90, 90); // light-red color
         else
-            if (i == m_selRocket)
+            if (i == m_sim.selectedRocket())
                 r.setColor(120, 255, 140); // light-green color
         else
                 r.setColor(200, 200, 200); // light-gray color
 
         for (int k = 0; k < 4; ++k)
         {
-            drawLine(r, Physics::toWorld(m_spec, rd.state, hull[k]), Physics::toWorld(m_spec, rd.state, hull[(k + 1) % 4]));
+            drawLine(r, Physics::toWorld(m_sim.spec(), rd.state, hull[k]), Physics::toWorld(m_sim.spec(), rd.state, hull[(k + 1) % 4]));
         }
 
         // flame, from the engine
         if (rd.info.thrust > 0.0f)
         {
-            Vec2 base = Physics::toWorld(m_spec, rd.state, { 0.0f, m_spec.halfHeight });
+            Vec2 base = Physics::toWorld(m_sim.spec(), rd.state, { 0.0f, m_sim.spec().halfHeight });
             Vec2 back{ -std::sin(rd.state.angle), std::cos(rd.state.angle) }; // sin, -cos - nose
-            float len = 3.0f * rd.info.thrust / m_spec.maxThrust; /// 3m scaled by thrust
+            float len = 3.0f * rd.info.thrust / m_sim.spec().maxThrust; /// 3m scaled by thrust
             r.setColor(255, 170, 40); // light-orange color
             drawLine(r, base, base + back * len);
         }

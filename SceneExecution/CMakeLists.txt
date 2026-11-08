@@ -1,3 +1,3 @@
 add_library(SceneExecution STATIC src/Execution.cpp)
 target_include_directories(SceneExecution PUBLIC include)
-target_link_libraries(SceneExecution PUBLIC Renderer Physics SceneData)
+target_link_libraries(SceneExecution PUBLIC Renderer Physics SceneData Simulation)
