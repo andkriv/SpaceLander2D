@@ -11,7 +11,15 @@ using namespace Physics;
 
 namespace
 {
-    constexpr float kPi = 3.14159265f;
+    constexpr float kDt = 1.0f / 240.0f; // physics update rate, with kSkin - 0.02*240 = 4.8 m/s, g*dt=0.04 m/s
+    constexpr float kPi = 3.14159265f;   // pi
+
+    World zeroG()
+    {
+        World w;
+        w.gravity = { 0, 0 };
+        return w;
+    }
 }
 
 // ---------------- mass, fuel, inertia ----------------
@@ -97,6 +105,94 @@ TEST_CASE("makeState: hull center through toWorld", "[state]")
             CHECK(b.fuel == Approx(frac * s.fuelCapacity));
         }
     }
+}
+
+// ---------------- gravity ----------------
+
+TEST_CASE("free fall matches kinematics", "[gravity]")
+{
+    RocketSpec s;
+    World w;
+    Input in;
+    BodyState b = makeState(s, { 0, 0 }, 0);
+
+    float y0 = b.pos.y;
+    for (int i = 0; i < 240; ++i)
+        step(s, b, in, w, kDt);
+
+    CHECK(b.vel.y == Approx(9.81f).epsilon(0.001));
+    CHECK(b.pos.y - y0 == Approx(0.5f * 9.81f).epsilon(0.01));
+    CHECK(b.vel.x == 0.0f);
+}
+
+TEST_CASE("gravity's vector", "[gravity]")
+{
+    RocketSpec s;
+    Input in;
+
+    SECTION("sideways")
+    {
+        World w;
+        w.gravity = { 5, 0 };
+        BodyState b = makeState(s, { 0, 0 }, 0);
+
+        for (int i = 0; i < 240; ++i)
+            step(s, b, in, w, kDt);
+
+        CHECK(b.vel.x == Approx(5.0f).epsilon(0.001));
+        CHECK(b.vel.y == Approx(0.0f).margin(1e-4));
+    }
+    SECTION("upward")
+    {
+        World w;
+        w.gravity = { 0, -9.81f };
+        BodyState b = makeState(s, { 0, 0 }, 0);
+
+        for (int i = 0; i < 240; ++i)
+            step(s, b, in, w, kDt);
+
+        CHECK(b.vel.y < -9.0f);
+    }
+    SECTION("diagonal keeps the ratio")
+    {
+        World w;
+        w.gravity = { 3, 4 };
+        BodyState b = makeState(s, { 0, 0 }, 0);
+
+        for (int i = 0; i < 240; ++i)
+            step(s, b, in, w, kDt);
+
+        CHECK(b.vel.x / b.vel.y == Approx(0.75f).epsilon(0.001));
+    }
+}
+
+TEST_CASE("gravity acceleration is independent of mass", "[gravity]")
+{
+    RocketSpec s;
+    World w;
+    Input in;
+    BodyState light = makeState(s, { 0, 0 }, 0, 0.0f);
+    BodyState heavy = makeState(s, { 0, 0 }, 0, 1.0f);
+
+    for (int i = 0; i < 120; ++i)
+    {
+        step(s, light, in, w, kDt);
+        step(s, heavy, in, w, kDt);
+    }
+
+    CHECK(light.vel.y == Approx(heavy.vel.y).epsilon(1e-4));
+}
+
+TEST_CASE("free flight -> no contact", "[gravity]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    Input in;
+    BodyState b = makeState(s, { 0, 0 }, 0);
+    StepInfo info = step(s, b, in, w, kDt);
+
+    CHECK_FALSE(info.touching);
+    CHECK(info.impactSpeed == 0.0f);
 }
 
 // ---------------- terrain conversion ----------------
