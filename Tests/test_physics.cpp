@@ -20,6 +20,34 @@ namespace
         w.gravity = { 0, 0 };
         return w;
     }
+
+    World flatGround(float y = 10.0f)
+    {
+        World w;
+        w.terrain.push_back({ { -50, y }, { 50, y } });
+        return w;
+    }
+
+    float lowestY(const RocketSpec& s, const BodyState& b)
+    {
+        float m = -1e30f;
+        for (Vec2 p : hullLocal(s))
+            m = std::max(m, toWorld(s, b, p).y);
+        return m;
+    }
+
+    float rightmostX(const RocketSpec& s, const BodyState& b)
+    {
+        float m = -1e30f;
+        for (Vec2 p : hullLocal(s))
+            m = std::max(m, toWorld(s, b, p).x);
+        return m;
+    }
+
+    float speed(const BodyState& b)
+    {
+        return std::sqrt(b.vel.x * b.vel.x + b.vel.y * b.vel.y);
+    }
 }
 
 // ---------------- mass, fuel, inertia ----------------
@@ -501,4 +529,171 @@ TEST_CASE("World::setTerrain builds scaled segments", "[terrain]")
 
     w.setTerrain(Terrain{}, 0.1f);
     CHECK(w.terrain.empty());
+}
+
+// ---------------- collision ----------------
+
+TEST_CASE("rocket lands and rests on flat ground", "[collision]")
+{
+    RocketSpec s;
+    World w = flatGround(10);
+    BodyState b = makeState(s, { 0, 7.5f }, 0);
+    StepInfo info;
+
+    float worst = -1e30f;
+    for (int i = 0; i < 240 * 5; ++i)
+    {
+        info = step(s, b, Input{}, w, kDt);
+        worst = std::max(worst, lowestY(s, b) - 10.0f);
+    }
+
+    CHECK(worst < 0.15f);                 // not sinks in
+    CHECK(lowestY(s, b) - 10.0f < 0.02f); // settled at ~kSlop
+    CHECK(lowestY(s, b) > 9.95f);         // not hovering
+    CHECK(speed(b) < 0.1f);
+    CHECK(std::fabs(b.angVel) < 0.1f);
+    CHECK(std::fabs(b.angle) < 0.02f);
+    CHECK(info.touching);
+}
+
+TEST_CASE("fast impact never tunnels through the terrain", "[collision]")
+{
+    RocketSpec s;
+    World w = flatGround(10);
+    BodyState b = makeState(s, { 0, -11.8f }, 0); // ~20m drop
+
+    float worst = -1e30f;
+    float maxImpact = 0.0f;
+    for (int i = 0; i < 240 * 6; ++i)
+    {
+        StepInfo info = step(s, b, Input{}, w, kDt);
+        worst = std::max(worst, lowestY(s, b) - 10.0f);
+        maxImpact = std::max(maxImpact, info.impactSpeed);
+    }
+
+    CHECK(worst < 0.15f);
+    CHECK(maxImpact > 15.0f); // ~19.8m/s expected
+    CHECK(maxImpact < 25.0f);
+    CHECK(speed(b) < 0.2f);
+}
+
+TEST_CASE("restitution controls the bounce", "[collision]")
+{
+    RocketSpec s;
+    auto run = [&](float e, float& maxImpact)
+    {
+        World w = flatGround(10);
+        w.restitution = e;
+        BodyState b = makeState(s, { 0, 3.2f }, 0); // ~5 m drop
+
+        float maxUp = 0.0f;
+        maxImpact = 0.0f;
+        for (int i = 0; i < 240 * 2; ++i)
+        {
+            StepInfo info = step(s, b, Input{}, w, kDt);
+            maxImpact = std::max(maxImpact, info.impactSpeed);
+            maxUp = std::max(maxUp, -b.vel.y);
+        }
+        return maxUp;
+    };
+    float impact = 0;
+    float bouncy = run(0.5f, impact);
+
+    CHECK(bouncy > 0.3f * impact);
+    CHECK(bouncy < 0.7f * impact);
+    CHECK(run(0.0f, impact) < 0.1f);
+}
+
+TEST_CASE("tilted rocket settles flat on its base", "[collision]")
+{
+    RocketSpec s;
+    World w = flatGround(10);
+    BodyState b = makeState(s, { 0, 7.0f }, 0.3f);
+
+    float worst = -1e30f;
+    for (int i = 0; i < 240 * 15; ++i)
+    {
+        step(s, b, Input{}, w, kDt);
+        worst = std::max(worst, lowestY(s, b) - 10.0f);
+    }
+
+    CHECK(worst < 0.2f);
+    CHECK(std::fabs(b.angle) < 0.05f);
+    CHECK(speed(b) < 0.1f);
+}
+
+TEST_CASE("vertical wall stops sideways motion", "[collision]")
+{
+    RocketSpec s;
+    World w = zeroG();
+    w.terrain.push_back({ { 10, -100 }, { 10, 100 } });
+    BodyState b = makeState(s, { 5, 0 }, 0);
+    b.vel = { 10, 0 };
+
+    float worst = -1e30f;
+    for (int i = 0; i < 240 * 3; ++i)
+    {
+        step(s, b, Input{}, w, kDt);
+        worst = std::max(worst, rightmostX(s, b) - 10.0f);
+    }
+    CHECK(worst < 0.15f);
+}
+
+TEST_CASE("friction holds the rocket on a gentle slope, not a steep one", "[collision]")
+{
+    RocketSpec s;
+    SECTION("gentle slope (tan = 0.1 < mu)")
+    {
+        World w;
+        w.terrain.push_back({ { -50, 5 }, { 50, 15 } });
+        BodyState b = makeState(s, { 0, 3 }, 0);
+
+        for (int i = 0; i < 240 * 10; ++i)
+            step(s, b, Input{}, w, kDt);
+
+        CHECK(speed(b) < 0.5f);
+    }
+    SECTION("45 degree slope (tan = 1 > mu) slides downhill")
+    {
+        World w;
+        w.terrain.push_back({ { -50, -50 }, { 50, 50 } });
+        BodyState b = makeState(s, { 0, -6 }, 0);
+
+        for (int i = 0; i < 240 * 4; ++i)
+            step(s, b, Input{}, w, kDt);
+
+        CHECK(b.pos.x > 3.0f);
+    }
+}
+
+TEST_CASE("thrust lifts a resting rocket off the ground", "[collision]")
+{
+    RocketSpec s;
+    World w = flatGround(10);
+    BodyState b = makeState(s, { 0, 8.0f }, 0);
+
+    for (int i = 0; i < 240 * 3; ++i)
+        step(s, b, Input{}, w, kDt);
+    REQUIRE(speed(b) < 0.1f);
+
+    Input in; in.throttle = 1.0f;
+    StepInfo info;
+    for (int i = 0; i < 240; ++i)
+        info = step(s, b, in, w, kDt);
+
+    CHECK(b.vel.y < -3.0f); // net upward: 16.7 - 9.81 m/s^2
+    CHECK_FALSE(info.touching);
+}
+
+TEST_CASE("degenerate terrain does not break the step", "[collision]")
+{
+    RocketSpec s;
+    World w;
+    w.terrain.push_back({ { 3, 3 }, { 3, 3 } }); // zero length
+    BodyState b = makeState(s, { 3, 3 }, 0);
+
+    step(s, b, Input{}, w, kDt);
+
+    CHECK(std::isfinite(b.pos.x));
+    CHECK(std::isfinite(b.pos.y));
 }
