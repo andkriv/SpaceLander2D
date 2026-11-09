@@ -5,14 +5,10 @@
 
 namespace
 {
-    constexpr float kPxPerM     = 10.0f;         // 1m = 10px; the editor hull (16/8/20 px) matches the spec
-    constexpr float kStep       = 1.0f / 240.0f; // physics update rate, with kSkin - 0.02*240 = 4.8 m/s, g*dt=0.04 m/s
-    constexpr float kCrashSpeed = 8.0f;          // [m/s] closing speed on contact
-
     void drawLine(IDrawTarget& r, Vec2 a, Vec2 b)
     {
         // physics world to sceen
-        r.drawLine(a.x * kPxPerM, a.y * kPxPerM, b.x * kPxPerM, b.y * kPxPerM);
+        r.drawLine(a.x * kPixelsPerMeter, a.y * kPixelsPerMeter, b.x * kPixelsPerMeter, b.y * kPixelsPerMeter);
     }
 }
 
@@ -35,6 +31,7 @@ void Execution::start(const Scene& s)
 {
     m_sim.start(s);
     m_stop = false;
+    m_paused = false;
 }
 
 void Execution::reset()
@@ -73,24 +70,26 @@ void Execution::update(IDrawTarget&)
 
     ImGui::SliderFloat("G [m/s^2]", &m_sim.world().gravity.y, 0.0f, 25.0f);
 
-    const char* prev = m_sim.selectedRocket() >= 0 ? m_sim.rockets()[m_sim.selectedRocket()].name.c_str()
-                                                   : "(none)";
+    const auto& rockets = m_sim.rockets();
+    const int& selR = m_sim.selectedRocket();
+    const char* prev = selR >= 0 ? rockets[selR].name.c_str()
+                                 : "(none)";
     if (ImGui::BeginCombo("Rocket", prev))
     {
-        for (int i = 0; i < (int)m_sim.rockets().size(); ++i)
-            if (ImGui::Selectable(m_sim.rockets()[i].name.c_str(), i == m_sim.selectedRocket()))
+        for (int i = 0; i < (int)rockets.size(); ++i)
+            if (ImGui::Selectable(rockets[i].name.c_str(), i == selR))
                 m_sim.selectRocket(i);
         ImGui::EndCombo();
     }
 
-    if (m_sim.selectedRocket() >= 0)
+    if (selR >= 0)
     {
         const Simulation::RocketData& rd = m_sim.selectedRocketData();
         ImGui::Separator();
         ImGui::TextDisabled("W thrust, Q/E rotate");
         ImGui::Text(        "Mass    %.1f kg", rd.info.mass);
         ImGui::Text(        "Fuel    %.1f / %.0f kg", rd.state.fuel, m_sim.spec().fuelCapacity);
-        ImGui::ProgressBar(rd.state.fuel / m_sim.spec().fuelCapacity, ImVec2(-1, 0));
+        ImGui::ProgressBar(rd.spec.fuelCapacity > 0 ? rd.state.fuel / rd.spec.fuelCapacity : 0.0f, ImVec2(-1, 0));
         ImGui::Text(        "Thrust  %.0f N", rd.info.thrust);
         ImGui::Text(        "Vh      %.2f m/s", rd.state.vel.x);
         ImGui::Text(        "Vv      %.2f m/s (up+)", -rd.state.vel.y);
@@ -111,10 +110,10 @@ void Execution::draw(IDrawTarget& r) const
         drawLine(r, sg.a, sg.b);
 
     // rockets
-    auto hull = hullLocal(m_sim.spec());
-    for (unsigned i = 0; i < (unsigned)m_sim.rockets().size(); ++i)
+    const auto& rockets = m_sim.rockets();
+    for (unsigned i = 0; i < (unsigned)rockets.size(); ++i)
     {
-        const Simulation::RocketData& rd = m_sim.rockets()[i];
+        const Simulation::RocketData& rd = rockets[i];
         if (rd.is_crashed)
             r.setColor(255, 90, 90); // light-red color
         else
@@ -123,6 +122,7 @@ void Execution::draw(IDrawTarget& r) const
         else
                 r.setColor(200, 200, 200); // light-gray color
 
+        auto hull = hullLocal(rd.spec); // same as in editor mode
         for (int k = 0; k < 4; ++k)
         {
             drawLine(r, Physics::toWorld(m_sim.spec(), rd.state, hull[k]), Physics::toWorld(m_sim.spec(), rd.state, hull[(k + 1) % 4]));

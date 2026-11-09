@@ -1,5 +1,6 @@
-#include "Simulation/Simulation.h"
 #include <algorithm>
+
+#include "Simulation/Simulation.h"
 
 void Simulation::start(const Scene& s)
 {
@@ -15,7 +16,10 @@ void Simulation::reset()
     {
         RocketData rd;
         rd.name = rk.name;
-        rd.state = Physics::makeState(m_spec, { rk.pos.x / kPxPerM, rk.pos.y / kPxPerM }, rk.angle);
+        rd.spec = rk.spec;
+
+        float frac = rd.spec.fuelCapacity > 0 ? rd.spec.fuelLoad / rd.spec.fuelCapacity : 0.0f;
+        rd.state = Physics::makeState(rd.spec, { rk.pos.x / kPxPerM, rk.pos.y / kPxPerM }, rk.angle, frac);
         m_rockets.push_back(std::move(rd));
     }
     m_selRocket = m_rockets.empty() ? -1 : 0;
@@ -76,7 +80,8 @@ const Physics::World& Simulation::world() const
     return m_world;
 }
 
-const RocketSpec& Simulation::spec() const
+const Physics::RocketSpec& Simulation::spec(int i = 0) const
 {
-    return m_spec;
+    static const Physics::RocketSpec none;
+    return (i >= 0 && i < (int)m_rockets.size()) ? m_rockets[i].spec : none;
 }

@@ -4,7 +4,7 @@
 
 #include "Vec2.h"
 
-constexpr float kPixelsPerMeter = 10.0f;   // editor pixels <-> physics meters
+constexpr float kPixelsPerMeter = 10.0f; // 1m = 10px
 
 struct RocketSpec                // SI units
 {
