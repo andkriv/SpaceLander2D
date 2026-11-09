@@ -76,7 +76,7 @@ const Physics::World& Simulation::world() const
     return m_world;
 }
 
-const Physics::RocketSpec& Simulation::spec() const
+const RocketSpec& Simulation::spec() const
 {
     return m_spec;
 }

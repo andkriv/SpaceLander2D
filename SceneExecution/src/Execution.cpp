@@ -111,7 +111,7 @@ void Execution::draw(IDrawTarget& r) const
         drawLine(r, sg.a, sg.b);
 
     // rockets
-    auto hull = Physics::hullLocal(m_sim.spec());
+    auto hull = hullLocal(m_sim.spec());
     for (unsigned i = 0; i < (unsigned)m_sim.rockets().size(); ++i)
     {
         const Simulation::RocketData& rd = m_sim.rockets()[i];

@@ -3,32 +3,12 @@
 #include <vector>
 
 #include "SceneData/Terrain.h"
-#include "SceneData/Vec2.h"
+#include "SceneData/RocketSpec.h"
 
 namespace Physics
 {
 
     constexpr float kG0 = 9.80665f;   // standard gravity, for Isp
-
-    struct RocketSpec                // SI units
-    {                
-        float dryMass = 800.0f;      // [kg]
-        float fuelCapacity = 700.0f; // [kg]
-        float maxThrust = 25000.0f;  // [N]
-        float isp = 250.0f;          // [s], specific impulse
-        float maxTorque = 6000.0f;   // [N*m], rotation control authority
-
-        // Hull trapezoid, local frame centered on the hull, nose toward -y
-        // half for collision OOB in SAT, fuel tank bottom
-        float noseHalfWidth = 0.8f;  // [m]
-        float baseHalfWidth = 1.6f;  // [m]
-        float halfHeight = 2.0f;     // [m]
-
-        // fuel tank params
-        float dryComY = 0.0f;        // [m], dry-mass COM along the axis (+y = toward engine)
-        float tankWidth = 1.4f;      // [m], fuel tank sits at the bottom of the hull
-        float tankHeight = 3.0f;     // [m]
-    };
 
     struct BodyState
     {
@@ -82,8 +62,6 @@ namespace Physics
     };
 
     Vec2 rotate(Vec2 v, float angle);
-
-    std::array<Vec2, 4> hullLocal(const RocketSpec& s);
 
     MassProps massProps(const RocketSpec& s, float fuel);
 

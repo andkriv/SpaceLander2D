@@ -31,7 +31,7 @@ public:
     int  selectedRocket() const;
     void selectRocket(int i);
 
-    const Physics::RocketSpec& spec() const;
+    const RocketSpec& spec() const;
     const std::vector<RocketData>& rockets() const;
     const RocketData& selectedRocketData() const;
 
@@ -40,7 +40,7 @@ public:
 
 private:
     Scene                   m_scene;
-    Physics::RocketSpec     m_spec; // all same for now
+    RocketSpec              m_spec; // all same for now
     Physics::World          m_world;
     std::vector<RocketData> m_rockets;
 

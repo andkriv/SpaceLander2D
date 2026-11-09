@@ -28,12 +28,6 @@ namespace Physics
         return { v.x * c - v.y * s, v.x * s + v.y * c };
     }
 
-    std::array<Vec2, 4> hullLocal(const RocketSpec& s)
-    {
-        return { { { -s.noseHalfWidth, -s.halfHeight }, {  s.noseHalfWidth, -s.halfHeight },
-                   {  s.baseHalfWidth,  s.halfHeight }, { -s.baseHalfWidth,  s.halfHeight } } };
-    }
-
     MassProps massProps(const RocketSpec& s, float fuel)
     {
         fuel = std::clamp(fuel, 0.0f, s.fuelCapacity);
