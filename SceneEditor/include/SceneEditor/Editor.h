@@ -22,6 +22,7 @@ public:
 
 private:
     void controlRocket(float dt);
+    void specPanel();
 
 private:
     EditorModel m_model;

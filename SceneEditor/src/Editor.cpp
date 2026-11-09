@@ -10,11 +10,9 @@ namespace
     constexpr float kMoveSpeed = 200.0f;   // px/s
     constexpr float kTurnSpeed = 2.0f;     // rad/s
 
-    // trapezoid
-    constexpr Vec2 kHull[4] = { {-8, -20}, {8, -20}, {16, 20}, {-16, 20} };
-
-    Vec2 toWorld(const Rocket& rk, const Vec2& l)
+    Vec2 toPixels(const Rocket& rk, Vec2 localMeters)
     {
+        Vec2 l = localMeters * kPixelsPerMeter;
         float c = std::cos(rk.angle);
         float s = std::sin(rk.angle);
 
@@ -186,6 +184,55 @@ void Editor::update(IDrawTarget& r, IFileDialog& dialog)
         ImGui::TextWrapped("%s", m_files.status().c_str());
 
     ImGui::End();
+
+    specPanel();
+}
+
+void Editor::specPanel()
+{
+    const RocketSpec* cur = m_model.selectedSpec();
+    if (!cur)
+        return;
+
+    RocketSpec s = *cur;
+    bool ch = false;
+
+    ImGui::Begin("Rocket Settings");
+    ImGui::TextDisabled("%s", m_model.rockets()[m_model.selectedRocket()].name.c_str());
+
+    ImGui::SeparatorText("Mass and fuel [kg]");
+    ch |= ImGui::DragFloat("Dry mass",           &s.dryMass,        5.0f,   1.0f, 1e6f, "%.0f");
+    ch |= ImGui::DragFloat("Fuel capacity",      &s.fuelCapacity,   5.0f,   0.0f, 1e6f, "%.0f");
+    ch |= ImGui::DragFloat("Fuel at start",      &s.fuelStart,      5.0f,   0.0f, s.fuelCapacity, "%.0f");
+
+    ImGui::SeparatorText("Main engine");
+    ch |= ImGui::DragFloat("Max thrust (N)",     &s.maxThrust,    100.0f,   0.0f, 1e7f, "%.0f");
+    ch |= ImGui::DragFloat("Isp (s)",            &s.isp,            1.0f,   1.0f, 1000.0f, "%.0f");
+
+    ImGui::SeparatorText("Rotation thrusters");
+    ch |= ImGui::DragFloat("Thrust, nozzle [N]", &s.rcsThrust,     10.0f,   0.0f, 1e6f, "%.0f");
+    ch |= ImGui::DragFloat("Arm [m]",            &s.rcsArm,        0.05f,   0.0f, s.halfHeight, "%.2f");
+
+    ImGui::SeparatorText("Shape [m]");
+    ch |= ImGui::DragFloat("Half height",        &s.halfHeight,    0.05f,   0.5f, 20.0f, "%.2f");
+    ch |= ImGui::DragFloat("Nose half width",    &s.noseHalfWidth, 0.05f,   0.1f, 20.0f, "%.2f");
+    ch |= ImGui::DragFloat("Base half width",    &s.baseHalfWidth, 0.05f,   0.1f, 20.0f, "%.2f");
+
+    ImGui::SeparatorText("Internals (m)");
+    ch |= ImGui::DragFloat("Tank width",         &s.tankWidth,     0.05f,   0.0f, 40.0f, "%.2f");
+    ch |= ImGui::DragFloat("Tank height",        &s.tankHeight,    0.05f,   0.0f, 40.0f, "%.2f");
+    ch |= ImGui::DragFloat("Dry COM Y",          &s.dryComY,       0.05f, -20.0f, 20.0f, "%.2f");
+
+    if (ch)
+        m_model.setSelectedSpec(s); // clamps, redraws next frame
+
+    if (ImGui::Button("Reset to defaults"))
+        m_model.setSelectedSpec(RocketSpec{});
+
+    float mass = s.dryMass + s.fuelStart;
+    ImGui::Separator();
+    ImGui::Text("Start mass %.0f kg, thrust/weight %.2f", mass, s.maxThrust / (mass * 9.81f));
+    ImGui::End();
 }
 
 static void drawMarker(IDrawTarget& r, const Vec2& p)
@@ -240,10 +287,11 @@ void Editor::draw(IDrawTarget& r) const
             r.setColor(200, 200, 200); // light-gray color
 
         // convert rocket body point with rocket's pos, angle
+        auto hull = hullLocal(rk.spec);
         for (int k = 0; k < 4; ++k)
         {
-            Vec2 a = toWorld(rk, kHull[k]);
-            Vec2 b = toWorld(rk, kHull[(k + 1) % 4]);
+            Vec2 a = toPixels(rk, hull[k]);
+            Vec2 b = toPixels(rk, hull[(k + 1) % 4]);
             r.drawLine(a.x, a.y, b.x, b.y);
         }
     }

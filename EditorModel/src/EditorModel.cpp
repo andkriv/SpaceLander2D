@@ -99,6 +99,23 @@ bool EditorModel::moveSelectedRocket(Vec2 d, float dAngle)
     return true;
 }
 
+bool EditorModel::setSelectedSpec(const RocketSpec& s)
+{
+    if (m_selectedRocket < 0)
+        return false;
+
+    RocketSpec c = s;
+    sanitize(c);
+
+    m_rockets[m_selectedRocket].spec = c;
+    return true;
+}
+
+const RocketSpec* EditorModel::selectedSpec() const
+{
+    return m_selectedRocket < 0 ? nullptr : &m_rockets[m_selectedRocket].spec;
+}
+
 void EditorModel::setScene(Scene s)
 {
     m_terrain = std::move(s.terrain);
