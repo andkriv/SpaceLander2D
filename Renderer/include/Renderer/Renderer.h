@@ -13,7 +13,7 @@ public:
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
 
-    bool init(const char* title, int width, int height);
+    bool init(const char* title, unsigned width, unsigned height);
     void shutdown();
 
     bool pollEvents(); // window closed = false

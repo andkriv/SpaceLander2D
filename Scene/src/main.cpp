@@ -28,6 +28,7 @@ int main(int, char**) {
             editor.update(r, r);
             editor.draw(r);
 
+            ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f - 60.0f, 10), ImGuiCond_FirstUseEver);
             ImGui::Begin("Mode");
             if (ImGui::Button("Run simulation"))
             {

@@ -11,12 +11,11 @@ struct RocketSpec                // SI units
     // mass and fuel
     float dryMass      = 800.0f; // [kg]
     float fuelCapacity = 700.0f; // [kg]
-    float fuelStart    = 700.0f; // [kg] at beginig
+    float fuelStart    = 700.0f; // [kg] at begining
 
     // main engine
     float maxThrust  = 25000.0f; // [N]
     float isp          = 250.0f; // [s], specific impulse
-    float maxTorque   = 6000.0f; // [N*m], rotation control authority
 
     // rot engines, nozzles +-rcsArm from hull center
     float rcsThrust   = 3000.0f; // [N] per nozzle

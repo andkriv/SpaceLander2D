@@ -18,7 +18,7 @@ void Simulation::reset()
         rd.name = rk.name;
         rd.spec = rk.spec;
 
-        float frac = rd.spec.fuelCapacity > 0 ? rd.spec.fuelLoad / rd.spec.fuelCapacity : 0.0f;
+        float frac = rd.spec.fuelCapacity > 0 ? rd.spec.fuelStart / rd.spec.fuelCapacity : 0.0f;
         rd.state = Physics::makeState(rd.spec, { rk.pos.x / kPxPerM, rk.pos.y / kPxPerM }, rk.angle, frac);
         m_rockets.push_back(std::move(rd));
     }
@@ -29,19 +29,25 @@ void Simulation::reset()
 
 int Simulation::step(float frameDt, const Physics::Input& selectedInput)
 {
+    std::vector<Physics::RocketRef> rocketRefs(m_rockets.size());
+    for (size_t i = 0; i < m_rockets.size(); ++i)
+        rocketRefs[i] = { &m_rockets[i].spec, &m_rockets[i].state, {}, {} };
+
     // clamp so a stall doesn't cause spiral of death (sim takes more time then sim step), but lose time
     m_acc += std::min(frameDt, kMaxFrame);
     int n = 0;
     while (m_acc >= kStep)
     {
-        for (int i = 0; i < (int)m_rockets.size(); ++i)
+        for (size_t i = 0; i < rocketRefs.size(); ++i)
+            rocketRefs[i].input = ((int)i == m_selRocket) ? selectedInput : Physics::Input{};
+
+        Physics::stepAll(rocketRefs, m_world, kStep);
+
+        for (size_t i = 0; i < rocketRefs.size(); ++i)
         {
-            RocketData& rd = m_rockets[i];
-            Physics::Input ri = (i == m_selRocket) ? selectedInput : Physics::Input{};
-            rd.throttle = ri.throttle;
-            rd.info = Physics::step(m_spec, rd.state, ri, m_world, kStep);
-            if (rd.info.impactSpeed > kCrashSpeed)
-                rd.is_crashed = true;
+            m_rockets[i].info = rocketRefs[i].info;
+            if (rocketRefs[i].info.impactSpeed > kCrashSpeed)
+                m_rockets[i].is_crashed = true;
         }
         m_acc -= kStep;
         ++n;
@@ -80,8 +86,19 @@ const Physics::World& Simulation::world() const
     return m_world;
 }
 
-const Physics::RocketSpec& Simulation::spec(int i = 0) const
+const Physics::RocketSpec& Simulation::spec(int i) const
 {
     static const Physics::RocketSpec none;
     return (i >= 0 && i < (int)m_rockets.size()) ? m_rockets[i].spec : none;
+}
+
+void Simulation::setEngineLevel(int lvl)
+{
+    if (m_selRocket >= 0)
+        m_rockets[m_selRocket].level = std::clamp(lvl, 0, kEngineLevels - 1);
+}
+
+int  Simulation::engineLevel() const
+{
+    return m_selRocket >= 0 ? m_rockets[m_selRocket].level : kEngineLevels - 1;
 }

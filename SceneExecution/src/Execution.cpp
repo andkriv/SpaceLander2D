@@ -29,14 +29,9 @@ bool Execution::wantsStop() const
 
 void Execution::start(const Scene& s)
 {
-    m_sim.start(s);
     m_stop = false;
     m_paused = false;
-}
-
-void Execution::reset()
-{
-    m_sim.reset();
+    m_sim.start(s);
 }
 
 void Execution::update(IDrawTarget&)
@@ -46,8 +41,13 @@ void Execution::update(IDrawTarget&)
     Physics::Input in;
     if (!io.WantTextInput)
     {
-        in.throttle = ImGui::IsKeyDown(ImGuiKey_W) ? 1.0f : 0.0f;
-        in.rotate   = (float)ImGui::IsKeyDown(ImGuiKey_E) - (float)ImGui::IsKeyDown(ImGuiKey_Q);
+        for (int k = 0; k < Simulation::kEngineLevels; ++k)
+            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_1 + k), false))
+                m_sim.setEngineLevel(k);
+
+        float f = Simulation::engineLevelFraction(m_sim.engineLevel());
+        in.throttle = ImGui::IsKeyDown(ImGuiKey_W) ? f : 0.0f;
+        in.rotate = ((float)ImGui::IsKeyDown(ImGuiKey_E) - (float)ImGui::IsKeyDown(ImGuiKey_Q)) * f;
     }
 
     // fix-step sim
@@ -63,7 +63,7 @@ void Execution::update(IDrawTarget&)
 
     ImGui::SameLine();
     if (ImGui::Button("Reset"))
-        reset();
+        m_sim.reset();
 
     ImGui::SameLine();
     ImGui::Checkbox("Pause", &m_paused);
@@ -86,11 +86,13 @@ void Execution::update(IDrawTarget&)
     {
         const Simulation::RocketData& rd = m_sim.selectedRocketData();
         ImGui::Separator();
-        ImGui::TextDisabled("W thrust, Q/E rotate");
+        ImGui::TextDisabled("W thrust, Q/E rotate, 1-4 thrust");
         ImGui::Text(        "Mass    %.1f kg", rd.info.mass);
         ImGui::Text(        "Fuel    %.1f / %.0f kg", rd.state.fuel, m_sim.spec().fuelCapacity);
         ImGui::ProgressBar(rd.spec.fuelCapacity > 0 ? rd.state.fuel / rd.spec.fuelCapacity : 0.0f, ImVec2(-1, 0));
-        ImGui::Text(        "Thrust  %.0f N", rd.info.thrust);
+        ImGui::Text(        "Level   %d/4 (%.0f%%)", rd.level + 1, Simulation::engineLevelFraction(rd.level) * 100.0f);
+        ImGui::Text(        "Main    %.0f N", rd.info.thrust);
+        ImGui::Text(        "Rot     %.0f N x2 (%s)", rd.info.rcsForce, rd.info.rcsDir > 0 ? "CW" : rd.info.rcsDir < 0 ? "CCW" : "off");
         ImGui::Text(        "Vh      %.2f m/s", rd.state.vel.x);
         ImGui::Text(        "Vv      %.2f m/s (up+)", -rd.state.vel.y);
         ImGui::Text(        "Acc     %.2f, %.2f m/s^2", rd.info.acc.x, -rd.info.acc.y);
@@ -125,17 +127,26 @@ void Execution::draw(IDrawTarget& r) const
         auto hull = hullLocal(rd.spec); // same as in editor mode
         for (int k = 0; k < 4; ++k)
         {
-            drawLine(r, Physics::toWorld(m_sim.spec(), rd.state, hull[k]), Physics::toWorld(m_sim.spec(), rd.state, hull[(k + 1) % 4]));
+            drawLine(r, Physics::toWorld(rd.spec, rd.state, hull[k]), Physics::toWorld(rd.spec, rd.state, hull[(k + 1) % 4]));
         }
 
-        // flame, from the engine
-        if (rd.info.thrust > 0.0f)
+        // engines plumes, length = force * kPlumeMetersPerNewton, same scale
+        auto plume = [&](const Physics::Nozzle& nz, float newtons)
         {
-            Vec2 base = Physics::toWorld(m_sim.spec(), rd.state, { 0.0f, m_sim.spec().halfHeight });
-            Vec2 back{ -std::sin(rd.state.angle), std::cos(rd.state.angle) }; // sin, -cos - nose
-            float len = 3.0f * rd.info.thrust / m_sim.spec().maxThrust; /// 3m scaled by thrust
-            r.setColor(255, 170, 40); // light-orange color
-            drawLine(r, base, base + back * len);
-        }
+            if (newtons <= 0.0f)
+                return;
+
+            Vec2 base = Physics::toWorld(rd.spec, rd.state, nz.pos);
+            Vec2 dir = Physics::rotate(nz.exhaust, rd.state.angle);
+
+            drawLine(r, base, base + dir * Physics::plumeLength(newtons));
+        };
+        r.setColor(255, 170, 40); // light-orange color
+        plume(Physics::mainNozzle(rd.spec), rd.info.thrust);
+        r.setColor(140, 220, 255); // light-blue color
+
+        if (rd.info.rcsDir != 0)
+            for (const auto& nz : Physics::rcsNozzles(rd.spec, rd.info.rcsDir))
+                plume(nz, rd.info.rcsForce);
     }
 }

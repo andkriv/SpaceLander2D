@@ -3,8 +3,8 @@
 
 struct Vec2
 {
-    float x;
-    float y;
+    float x = 0;
+    float y = 0;
 };
 
 inline Vec2  operator+(Vec2 a, Vec2 b)

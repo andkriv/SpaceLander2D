@@ -74,7 +74,8 @@ void Editor::update(IDrawTarget& r, IFileDialog& dialog)
     if (in.leftPressed && !ImGui::GetIO().WantCaptureMouse)
         m_model.addPoint({ in.mouseX, in.mouseY });
 
-    ImGui::Begin("Terrain Editor");
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Terrain Editor", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 
     if (!m_model.isDrawing())
     {
@@ -197,6 +198,7 @@ void Editor::specPanel()
     RocketSpec s = *cur;
     bool ch = false;
 
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 350.0f, 10), ImGuiCond_FirstUseEver);
     ImGui::Begin("Rocket Settings");
     ImGui::TextDisabled("%s", m_model.rockets()[m_model.selectedRocket()].name.c_str());
 

@@ -17,9 +17,6 @@ public:
     bool paused() const;
 
 private:
-    void reset();
-
-private:
     Simulation m_sim;
 
     bool   m_paused = false;

@@ -5,7 +5,6 @@
 #include "RenderApi/RenderApi.h"
 #include "EditorModel/EditorModel.h"
 #include "EditorModel/SceneFileFlow.h"
-#include "SceneData/Rocket.h"
 
 class Editor
 {
