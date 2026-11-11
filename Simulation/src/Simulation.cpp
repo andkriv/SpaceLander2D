@@ -20,11 +20,68 @@ void Simulation::reset()
 
         float frac = rd.spec.fuelCapacity > 0 ? rd.spec.fuelStart / rd.spec.fuelCapacity : 0.0f;
         rd.state = Physics::makeState(rd.spec, { rk.pos.x / kPxPerM, rk.pos.y / kPxPerM }, rk.angle, frac);
+        rd.trail.push_back(Physics::toWorld(rd.spec, rd.state, { 0.0f, 0.0f }));
         m_rockets.push_back(std::move(rd));
     }
     m_selRocket = m_rockets.empty() ? -1 : 0;
     m_acc = 0.0;
+    m_trailAcc = 0.0f;
     // don't reset g
+}
+
+void Simulation::clearTrails()
+{
+    for (RocketData& rd : m_rockets)
+    {
+        rd.trail.clear();
+        rd.trail.push_back(Physics::toWorld(rd.spec, rd.state, { 0.0f, 0.0f }));
+    }
+    m_trailAcc = 0.0f;
+}
+
+void Simulation::recordTrails()
+{
+    for (RocketData& rd : m_rockets)
+    {
+        Vec2 p = Physics::toWorld(rd.spec, rd.state, { 0.0f, 0.0f });
+
+        if (!rd.trail.empty())
+        {
+            Vec2 d = p - rd.trail.back();
+            if (d.x * d.x + d.y * d.y < kTrailMinDist * kTrailMinDist)
+                continue;
+        }
+        rd.trail.push_back(p);
+
+        if (rd.trail.size() > kTrailMax)
+            rd.trail.erase(rd.trail.begin());
+    }
+}
+
+std::vector<Vec2> Simulation::predict(int i, float seconds) const
+{
+    std::vector<Vec2> out;
+    if (i < 0 || i >= (int)m_rockets.size())
+        return out;
+
+    const Physics::RocketSpec& spec = m_rockets[i].spec;
+    Physics::BodyState st = m_rockets[i].state;
+
+    out.push_back(Physics::toWorld(spec, st, { 0.0f, 0.0f }));
+
+    const int steps = (int)(seconds / kStep);
+    for (int k = 1; k <= steps; ++k)
+    {
+        Physics::StepInfo info = Physics::step(spec, st, Physics::Input{}, m_world, kStep);
+
+        bool last = info.touching || k == steps;
+        if (k % kPredictEvery == 0 || last)
+            out.push_back(Physics::toWorld(spec, st, { 0.0f, 0.0f }));
+
+        if (info.touching)
+            break;
+    }
+    return out;
 }
 
 int Simulation::step(float frameDt, const Physics::Input& selectedInput)
@@ -51,6 +108,13 @@ int Simulation::step(float frameDt, const Physics::Input& selectedInput)
         }
         m_acc -= kStep;
         ++n;
+
+        m_trailAcc += kStep;
+        if (m_trailAcc >= kTrailInterval)
+        {
+            m_trailAcc -= kTrailInterval;
+            recordTrails();
+        }
     }
     return n;
 }

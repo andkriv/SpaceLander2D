@@ -256,3 +256,131 @@ TEST_CASE("rockets in scene collide with each other", "[simulation][rockets]")
         sim.step(0.05f, go); // 4s
     CHECK(sim.rockets()[1].state.vel.x > 3.0f);
 }
+
+// ---------------- trajectories ----------------
+
+TEST_CASE("trail starts at the initial pos and grows flying", "[simulation][trajectory]")
+{
+    Simulation sim;
+    sim.start(scene({ { 400, 200 } }, false));
+
+    REQUIRE(sim.rockets()[0].trail.size() == 1);
+    CHECK(sim.rockets()[0].trail[0].x == Approx(40.0f).epsilon(1e-3));
+    CHECK(sim.rockets()[0].trail[0].y == Approx(20.0f).epsilon(1e-3));
+
+    run(sim, 2.0f);
+    const auto& t = sim.rockets()[0].trail;
+    CHECK(t.size() > 20);
+
+    for (size_t i = 1; i < t.size(); ++i)
+    {
+        CHECK(t[i].y > t[i - 1].y); // fall
+
+        float dy = t[i].y - t[i - 1].y;
+        float dx = t[i].x - t[i - 1].x;
+        CHECK(std::sqrt(dx * dx + dy * dy) >= Simulation::kTrailMinDist - 1e-4f);
+    }
+    CHECK(t.back().y == Approx(20.0f + 0.5f * 9.81f * 4.0f).epsilon(0.03));
+}
+
+TEST_CASE("resting rocket = no trail", "[simulation][trajectory]")
+{
+    Simulation sim;
+    sim.start(scene({ dropAt(100, 0.3f) }, true));
+
+    run(sim, 3.0f);
+    size_t settled = sim.rockets()[0].trail.size();
+
+    run(sim, 5.0f);
+    CHECK(sim.rockets()[0].trail.size() == settled);
+}
+
+TEST_CASE("trail is capped and drops the oldest points", "[simulation][trajectory]")
+{
+    Simulation sim;
+    sim.start(scene({ { 400, 200 } }, false));
+    sim.world().gravity = { 0, 0 };
+
+    Physics::Input go;
+    go.throttle = 1.0f;
+
+    Physics::Input none;
+
+    for (int i = 0; i < 3000; ++i)
+        sim.step(0.05f, i < 40 ? go : none); // 150s
+    const auto& t = sim.rockets()[0].trail;
+
+    CHECK(t.size() <= Simulation::kTrailMax);
+    CHECK(t.size() > Simulation::kTrailMax - 5);
+    CHECK(t.front().y != Approx(20.0f).margin(1e-3));
+}
+
+TEST_CASE("reset and clearTrails restart the trail", "[simulation][trajectory]")
+{
+    Simulation sim;
+    sim.start(scene({ { 400, 200 }, { 700, 200 } }, false));
+    run(sim, 1.0f);
+
+    REQUIRE(sim.rockets()[0].trail.size() > 5);
+
+    sim.clearTrails();
+    for (const auto& b : sim.rockets())
+        CHECK(b.trail.size() == 1);
+
+    CHECK(sim.rockets()[0].trail[0].y > 20.0f); // restarts from where it's now
+
+    run(sim, 1.0f);
+    sim.reset();
+    for (const auto& b : sim.rockets())
+        CHECK(b.trail.size() == 1);
+
+    CHECK(sim.rockets()[0].trail[0].y == Approx(20.0f).epsilon(1e-3));
+}
+
+TEST_CASE("prediction follows free fall, ends on the floor", "[simulation][trajectory]")
+{
+    // no floor, parabola
+    Simulation a;
+    a.start(scene({ { 400, 200 } }, false));
+    a.rockets();
+
+    auto pa = a.predict(0, 2.0f);
+    REQUIRE(pa.size() > 10);
+    CHECK(pa.front().y == Approx(20.0f).epsilon(1e-3));
+    CHECK(pa.back().y == Approx(20.0f + 0.5f * 9.81f * 4.0f).epsilon(0.02));
+    CHECK(pa.back().x == Approx(40.0f).margin(0.01f));
+
+    // floor, stop on contact
+    Simulation b;
+    b.start(scene({ dropAt(100, 5.0f) }, true));
+    auto pb = b.predict(0);
+
+    REQUIRE(pb.size() > 3);
+    CHECK(pb.size() < (size_t)(Simulation::kPredictSeconds / (Simulation::kStep * Simulation::kPredictEvery)));
+    CHECK(pb.back().y == Approx(60.0f - 1.7667f).margin(0.3f)); // hull center just above the floor
+}
+
+TEST_CASE("prediction does not change the simulation and ignores thrust", "[simulation][trajectory]")
+{
+    Simulation sim;
+    sim.start(scene({ { 300, 200 } }, false));
+
+    run(sim, 0.5f);
+    auto before = sim.rockets()[0].state;
+    auto p1 = sim.predict(0, 1.0f);
+    auto p2 = sim.predict(0, 1.0f);
+
+    CHECK(sim.rockets()[0].state.pos.y == before.pos.y);
+    CHECK(sim.rockets()[0].state.fuel == before.fuel);
+    REQUIRE(p1.size() == p2.size());
+    CHECK(p1.back().y == p2.back().y); // deterministic
+}
+
+TEST_CASE("prediction of an invalid rocket empty", "[simulation][trajectory]")
+{
+    Simulation sim;
+    sim.start(scene({ { 400, 200 } }, false));
+
+    CHECK(sim.predict(-1).empty());
+    CHECK(sim.predict(5).empty());
+}
