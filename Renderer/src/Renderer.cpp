@@ -30,18 +30,27 @@ Renderer::~Renderer()
     delete m_impl;
 }
 
-bool Renderer::init(const char* title, int w, int h)
+bool Renderer::init(const char* title, unsigned w, unsigned h)
 {
     if (!SDL_Init(SDL_INIT_VIDEO))
+    {
+        SDL_Log("SDL init error");
         return false;
+    }
 
     m_impl->window = SDL_CreateWindow(title, w, h, SDL_WINDOW_RESIZABLE);
     if (!m_impl->window)
+    {
+        SDL_Log("SDL create window error");
         return false;
+    }
 
     m_impl->renderer = SDL_CreateRenderer(m_impl->window, nullptr);
     if (!m_impl->renderer)
+    {
+        SDL_Log("SDL create render error");
         return false;
+    }
 
     SDL_SetRenderVSync(m_impl->renderer, 1);
 
@@ -82,25 +91,33 @@ bool Renderer::pollEvents()
     while (SDL_PollEvent(&e))
     {
         ImGui_ImplSDL3_ProcessEvent(&e);
-        if (e.type == SDL_EVENT_QUIT)
-            running = false;
-
-        if (e.type == SDL_EVENT_MOUSE_MOTION)
+        switch (e.type)
         {
-            m_impl->input.mouseX = e.motion.x;
-            m_impl->input.mouseY = e.motion.y;
-        }
+            case SDL_EVENT_QUIT:
+            {
+                running = false;
+                break;
+            }
+            case SDL_EVENT_MOUSE_MOTION:
+            {
+                m_impl->input.mouseX = e.motion.x;
+                m_impl->input.mouseY = e.motion.y;
+                break;
+            }
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            {
+                m_impl->input.mouseX = e.button.x;
+                m_impl->input.mouseY = e.button.y;
 
-        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
-        {
-            m_impl->input.mouseX = e.button.x;
-            m_impl->input.mouseY = e.button.y;
+                if (e.button.button == SDL_BUTTON_LEFT)
+                    m_impl->input.leftPressed = true;
 
-            if (e.button.button == SDL_BUTTON_LEFT)
-                m_impl->input.leftPressed = true;
-
-            if (e.button.button == SDL_BUTTON_RIGHT)
-                m_impl->input.rightPressed = true;
+                if (e.button.button == SDL_BUTTON_RIGHT)
+                    m_impl->input.rightPressed = true;
+                break;
+            }
+            default:
+                break;
         }
     }
 
@@ -113,7 +130,7 @@ void Renderer::beginFrame()
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
-    SDL_SetRenderDrawColor(m_impl->renderer, 20, 22, 28, 255);
+    SDL_SetRenderDrawColor(m_impl->renderer, 20, 22, 28, 255); // dark-gray color
     SDL_RenderClear(m_impl->renderer);
 }
 

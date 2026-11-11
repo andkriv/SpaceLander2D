@@ -9,7 +9,7 @@ using json = nlohmann::json;
 
 namespace
 {
-    constexpr int kVersion = 2;
+    constexpr int kVersion = 3;
 
     std::filesystem::path toPath(const std::string& s)
     {
@@ -20,6 +20,49 @@ namespace
     {
         if (err)
             *err = msg;
+    }
+
+    json specToJson(const RocketSpec& s)
+    {
+        return {{"dryMass",       s.dryMass},
+                {"fuelCapacity",  s.fuelCapacity},
+                {"fuelStart",     s.fuelStart},
+                {"maxThrust",     s.maxThrust},
+                {"isp",           s.isp},
+                {"rcsThrust",     s.rcsThrust},
+                {"rcsArm",        s.rcsArm},
+                {"noseHalfWidth", s.noseHalfWidth},
+                {"baseHalfWidth", s.baseHalfWidth},
+                {"halfHeight",    s.halfHeight},
+                {"dryComY",       s.dryComY},
+                {"tankWidth",     s.tankWidth},
+                {"tankHeight",    s.tankHeight} };
+    }
+
+    RocketSpec specFromJson(const json& j)
+    {
+        RocketSpec s;
+        auto get = [&](const char* k, float& v)
+        {
+            v = j.value(k, v);
+        };
+
+        get("dryMass",       s.dryMass);
+        get("fuelCapacity",  s.fuelCapacity);
+        get("fuelStart",     s.fuelStart);
+        get("maxThrust",     s.maxThrust);
+        get("isp",           s.isp);
+        get("rcsThrust",     s.rcsThrust);
+        get("rcsArm",        s.rcsArm);
+        get("noseHalfWidth", s.noseHalfWidth);
+        get("baseHalfWidth", s.baseHalfWidth);
+        get("halfHeight",    s.halfHeight);
+        get("dryComY",       s.dryComY);
+        get("tankWidth",     s.tankWidth);
+        get("tankHeight",    s.tankHeight);
+
+        sanitize(s);
+        return s;
     }
 }
 
@@ -46,7 +89,8 @@ namespace SceneIO
         for (const auto& r : s.rockets)
             rockets.push_back({ {"name", r.name},
                                 {"pos", { r.pos.x, r.pos.y }},
-                                {"angle", r.angle} });
+                                {"angle", r.angle},
+                                {"spec", specToJson(r.spec)} });
         j["rockets"] = rockets;
 
         std::ofstream f(toPath(path));
@@ -95,10 +139,12 @@ namespace SceneIO
                     r.name = jr.at("name").get<std::string>();
                     r.pos = { jr.at("pos").at(0).get<float>(), jr.at("pos").at(1).get<float>() };
                     r.angle = jr.at("angle").get<float>();
+                    r.spec = specFromJson(jr.value("spec", json::object()));
+
                     s.rockets.push_back(std::move(r));
                 }
             }
-            out = std::move(s);   // only replace on full success
+            out = std::move(s); // only replace on full success
             return true;
         }
         catch (const std::exception& e)

@@ -127,7 +127,7 @@ TEST_CASE("saved file version", "[sceneio]")
     TempFile f("rocketsim_version.json");
 
     REQUIRE(SceneIO::save(test_scene(), f.str()));
-    CHECK(read(f.p).find("\"version\": 2") != std::string::npos);
+    CHECK(read(f.p).find("\"version\": 3") != std::string::npos);
 }
 
 TEST_CASE("version 1 (no rockets) still loads", "[sceneio]")
@@ -216,4 +216,44 @@ TEST_CASE("non-ASCII file names work", "[sceneio]")
     CHECK(fs::exists(f.p));
     REQUIRE(SceneIO::load(out, f.str()));
     CHECK(out.rockets.size() == 2);
+}
+
+TEST_CASE("rocket specs round-trip", "[sceneio][spec]")
+{
+    TempFile f("rocketsim_spec.json");
+    Scene in = test_scene();
+    in.rockets[1].spec.dryMass = 1234.0f;
+    in.rockets[1].spec.fuelStart = 321.0f;
+    in.rockets[1].spec.rcsThrust = 777.0f;
+    in.rockets[1].spec.baseHalfWidth = 2.5f;
+
+    Scene out;
+    REQUIRE(SceneIO::save(in, f.str()));
+    REQUIRE(SceneIO::load(out, f.str()));
+    CHECK(out.rockets[1].spec.dryMass == Approx(1234.0f));
+    CHECK(out.rockets[1].spec.fuelStart == Approx(321.0f));
+    CHECK(out.rockets[1].spec.rcsThrust == Approx(777.0f));
+    CHECK(out.rockets[1].spec.baseHalfWidth == Approx(2.5f));
+    CHECK(out.rockets[0].spec.dryMass == Approx(800.0f));
+}
+
+TEST_CASE("version 2 files load with default specs; bad specs are clamped", "[sceneio][spec]")
+{
+    TempFile f("rocketsim_v2.json");
+    write(f.p, R"({"version":2,"terrain":{"polylines":[]},
+                               "rockets":[{"name":"R","pos":[1,2],
+                               "angle":0}]})");
+
+    Scene out;
+    REQUIRE(SceneIO::load(out, f.str()));
+    CHECK(out.rockets[0].spec.dryMass == Approx(800.0f));
+
+    write(f.p, R"({"version":3,"terrain":{"polylines":[]},
+                               "rockets":[{"name":"R","pos":[1,2],
+                               "angle":0,
+                               "spec":{"dryMass":-10,"isp":0}}]})");
+
+    REQUIRE(SceneIO::load(out, f.str()));
+    CHECK(out.rockets[0].spec.dryMass >= 1.0f);
+    CHECK(out.rockets[0].spec.isp >= 1.0f);
 }

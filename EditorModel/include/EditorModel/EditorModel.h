@@ -21,6 +21,8 @@ public:
     bool removeRocket(int i);
     void selectRocket(int i);
     bool moveSelectedRocket(Vec2 delta, float dAngle);
+    bool setSelectedSpec(const RocketSpec& s); // false = nothing selected
+    const RocketSpec* selectedSpec() const;    // nullptr = nothing selected
 
     // scene
     bool isDrawing() const;

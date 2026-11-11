@@ -270,3 +270,46 @@ TEST_CASE("scene() snapshots terrain and rockets", "[editor][scene]")
     CHECK(s.terrain.polylines.size() == 1);
     CHECK(s.rockets.size() == 1);
 }
+
+TEST_CASE("each rocket has its own spec", "[editor][spec]")
+{
+    EditorModel m;
+    m.addRocket();
+    m.addRocket();
+    m.selectRocket(0);
+
+    RocketSpec s;
+    s.dryMass = 1200.0f;
+    s.maxThrust = 40000.0f;
+
+    CHECK(m.setSelectedSpec(s));
+    CHECK(m.rockets()[0].spec.dryMass == Approx(1200.0f));
+    CHECK(m.rockets()[1].spec.dryMass == Approx(800.0f)); // untouched
+    CHECK(m.selectedSpec() == &m.rockets()[0].spec);
+}
+
+TEST_CASE("setSelectedSpec needs a selection and clamps bad values", "[editor][spec]")
+{
+    EditorModel m;
+    CHECK_FALSE(m.setSelectedSpec(RocketSpec{}));
+    CHECK(m.selectedSpec() == nullptr);
+
+    m.addRocket();
+    RocketSpec s;
+    s.dryMass = -5;
+    s.fuelCapacity = 100;
+    s.fuelStart = 900;
+
+    s.halfHeight = 1.0f;
+    s.tankHeight = 9.0f;
+    s.rcsArm = 7.0f;
+    s.isp = 0;
+    m.setSelectedSpec(s);
+
+    const RocketSpec& r = *m.selectedSpec();
+    CHECK(r.dryMass >= 1.0f);
+    CHECK(r.fuelStart == Approx(100.0f));
+    CHECK(r.tankHeight <= 2.0f * r.halfHeight);
+    CHECK(r.rcsArm <= r.halfHeight);
+    CHECK(r.isp >= 1.0f);
+}

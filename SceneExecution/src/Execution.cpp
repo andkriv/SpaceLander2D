@@ -5,14 +5,10 @@
 
 namespace
 {
-    constexpr float kPxPerM     = 10.0f;         // 1m = 10px; the editor hull (16/8/20 px) matches the spec
-    constexpr float kStep       = 1.0f / 240.0f; // physics update rate, with kSkin - 0.02*240 = 4.8 m/s, g*dt=0.04 m/s
-    constexpr float kCrashSpeed = 8.0f;          // [m/s] closing speed on contact
-
     void drawLine(IDrawTarget& r, Vec2 a, Vec2 b)
     {
         // physics world to sceen
-        r.drawLine(a.x * kPxPerM, a.y * kPxPerM, b.x * kPxPerM, b.y * kPxPerM);
+        r.drawLine(a.x * kPixelsPerMeter, a.y * kPixelsPerMeter, b.x * kPixelsPerMeter, b.y * kPixelsPerMeter);
     }
 }
 
@@ -33,13 +29,9 @@ bool Execution::wantsStop() const
 
 void Execution::start(const Scene& s)
 {
-    m_sim.start(s);
     m_stop = false;
-}
-
-void Execution::reset()
-{
-    m_sim.reset();
+    m_paused = false;
+    m_sim.start(s);
 }
 
 void Execution::update(IDrawTarget&)
@@ -49,8 +41,13 @@ void Execution::update(IDrawTarget&)
     Physics::Input in;
     if (!io.WantTextInput)
     {
-        in.throttle = ImGui::IsKeyDown(ImGuiKey_W) ? 1.0f : 0.0f;
-        in.rotate   = (float)ImGui::IsKeyDown(ImGuiKey_E) - (float)ImGui::IsKeyDown(ImGuiKey_Q);
+        for (int k = 0; k < Simulation::kEngineLevels; ++k)
+            if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_1 + k), false))
+                m_sim.setEngineLevel(k);
+
+        float f = Simulation::engineLevelFraction(m_sim.engineLevel());
+        in.throttle = ImGui::IsKeyDown(ImGuiKey_W) ? f : 0.0f;
+        in.rotate = ((float)ImGui::IsKeyDown(ImGuiKey_E) - (float)ImGui::IsKeyDown(ImGuiKey_Q)) * f;
     }
 
     // fix-step sim
@@ -66,32 +63,36 @@ void Execution::update(IDrawTarget&)
 
     ImGui::SameLine();
     if (ImGui::Button("Reset"))
-        reset();
+        m_sim.reset();
 
     ImGui::SameLine();
     ImGui::Checkbox("Pause", &m_paused);
 
     ImGui::SliderFloat("G [m/s^2]", &m_sim.world().gravity.y, 0.0f, 25.0f);
 
-    const char* prev = m_sim.selectedRocket() >= 0 ? m_sim.rockets()[m_sim.selectedRocket()].name.c_str()
-                                                   : "(none)";
+    const auto& rockets = m_sim.rockets();
+    const int& selR = m_sim.selectedRocket();
+    const char* prev = selR >= 0 ? rockets[selR].name.c_str()
+                                 : "(none)";
     if (ImGui::BeginCombo("Rocket", prev))
     {
-        for (int i = 0; i < (int)m_sim.rockets().size(); ++i)
-            if (ImGui::Selectable(m_sim.rockets()[i].name.c_str(), i == m_sim.selectedRocket()))
+        for (int i = 0; i < (int)rockets.size(); ++i)
+            if (ImGui::Selectable(rockets[i].name.c_str(), i == selR))
                 m_sim.selectRocket(i);
         ImGui::EndCombo();
     }
 
-    if (m_sim.selectedRocket() >= 0)
+    if (selR >= 0)
     {
         const Simulation::RocketData& rd = m_sim.selectedRocketData();
         ImGui::Separator();
-        ImGui::TextDisabled("W thrust, Q/E rotate");
+        ImGui::TextDisabled("W thrust, Q/E rotate, 1-4 thrust");
         ImGui::Text(        "Mass    %.1f kg", rd.info.mass);
         ImGui::Text(        "Fuel    %.1f / %.0f kg", rd.state.fuel, m_sim.spec().fuelCapacity);
-        ImGui::ProgressBar(rd.state.fuel / m_sim.spec().fuelCapacity, ImVec2(-1, 0));
-        ImGui::Text(        "Thrust  %.0f N", rd.info.thrust);
+        ImGui::ProgressBar(rd.spec.fuelCapacity > 0 ? rd.state.fuel / rd.spec.fuelCapacity : 0.0f, ImVec2(-1, 0));
+        ImGui::Text(        "Level   %d/4 (%.0f%%)", rd.level + 1, Simulation::engineLevelFraction(rd.level) * 100.0f);
+        ImGui::Text(        "Main    %.0f N", rd.info.thrust);
+        ImGui::Text(        "Rot     %.0f N x2 (%s)", rd.info.rcsForce, rd.info.rcsDir > 0 ? "CW" : rd.info.rcsDir < 0 ? "CCW" : "off");
         ImGui::Text(        "Vh      %.2f m/s", rd.state.vel.x);
         ImGui::Text(        "Vv      %.2f m/s (up+)", -rd.state.vel.y);
         ImGui::Text(        "Acc     %.2f, %.2f m/s^2", rd.info.acc.x, -rd.info.acc.y);
@@ -111,10 +112,10 @@ void Execution::draw(IDrawTarget& r) const
         drawLine(r, sg.a, sg.b);
 
     // rockets
-    auto hull = Physics::hullLocal(m_sim.spec());
-    for (unsigned i = 0; i < (unsigned)m_sim.rockets().size(); ++i)
+    const auto& rockets = m_sim.rockets();
+    for (unsigned i = 0; i < (unsigned)rockets.size(); ++i)
     {
-        const Simulation::RocketData& rd = m_sim.rockets()[i];
+        const Simulation::RocketData& rd = rockets[i];
         if (rd.is_crashed)
             r.setColor(255, 90, 90); // light-red color
         else
@@ -123,19 +124,29 @@ void Execution::draw(IDrawTarget& r) const
         else
                 r.setColor(200, 200, 200); // light-gray color
 
+        auto hull = hullLocal(rd.spec); // same as in editor mode
         for (int k = 0; k < 4; ++k)
         {
-            drawLine(r, Physics::toWorld(m_sim.spec(), rd.state, hull[k]), Physics::toWorld(m_sim.spec(), rd.state, hull[(k + 1) % 4]));
+            drawLine(r, Physics::toWorld(rd.spec, rd.state, hull[k]), Physics::toWorld(rd.spec, rd.state, hull[(k + 1) % 4]));
         }
 
-        // flame, from the engine
-        if (rd.info.thrust > 0.0f)
+        // engines plumes, length = force * kPlumeMetersPerNewton, same scale
+        auto plume = [&](const Physics::Nozzle& nz, float newtons)
         {
-            Vec2 base = Physics::toWorld(m_sim.spec(), rd.state, { 0.0f, m_sim.spec().halfHeight });
-            Vec2 back{ -std::sin(rd.state.angle), std::cos(rd.state.angle) }; // sin, -cos - nose
-            float len = 3.0f * rd.info.thrust / m_sim.spec().maxThrust; /// 3m scaled by thrust
-            r.setColor(255, 170, 40); // light-orange color
-            drawLine(r, base, base + back * len);
-        }
+            if (newtons <= 0.0f)
+                return;
+
+            Vec2 base = Physics::toWorld(rd.spec, rd.state, nz.pos);
+            Vec2 dir = Physics::rotate(nz.exhaust, rd.state.angle);
+
+            drawLine(r, base, base + dir * Physics::plumeLength(newtons));
+        };
+        r.setColor(255, 170, 40); // light-orange color
+        plume(Physics::mainNozzle(rd.spec), rd.info.thrust);
+        r.setColor(140, 220, 255); // light-blue color
+
+        if (rd.info.rcsDir != 0)
+            for (const auto& nz : Physics::rcsNozzles(rd.spec, rd.info.rcsDir))
+                plume(nz, rd.info.rcsForce);
     }
 }

@@ -1,4 +1,5 @@
 #include <cmath>
+#include <array>
 #include <algorithm>
 
 #include <catch2/catch_test_macros.hpp>
@@ -48,6 +49,40 @@ namespace
     {
         return std::sqrt(b.vel.x * b.vel.x + b.vel.y * b.vel.y);
     }
+
+    std::array<Vec2, 4> worldPoly(const RocketSpec& s, const BodyState& b)
+    {
+        std::array<Vec2, 4> out; auto h = hullLocal(s);
+        for (int i = 0; i < 4; ++i)
+            out[i] = toWorld(s, b, h[i]);
+
+        return out;
+    }
+    // >0 when p is inside the convex polygon
+    float insideDepth(const std::array<Vec2, 4>& P, Vec2 p)
+    {
+        float area = 0;
+        for (int i = 0; i < 4; ++i)
+            area += cross(P[i], P[(i + 1) % 4]);
+
+        float sg = area > 0 ? 1.0f : -1.0f;
+        float d = 1e30f;
+        for (int i = 0; i < 4; ++i)
+        {
+            Vec2 a = P[i];
+            Vec2 e = P[(i + 1) % 4] - a;
+            d = std::min(d, sg * cross(e, p - a) / std::sqrt(dot(e, e)));
+        }
+        return d;
+    }
+    float deepestVertex(const std::array<Vec2, 4>& P, const std::array<Vec2, 4>& Q)
+    {
+        float m = -1e30f;
+        for (Vec2 p : P)
+            m = std::max(m, insideDepth(Q, p));
+
+        return m;
+    }
 }
 
 // ---------------- mass, fuel, inertia ----------------
@@ -61,6 +96,16 @@ TEST_CASE("massProps: empty tank", "[mass]")
     CHECK(m.com.y == Approx(0.0f).margin(1e-6));
     // dry I: m/12 * ((nose+base)^2 + H^2) = 800/12 * (2.4^2 + 4^2)
     CHECK(m.inertia == Approx(1450.67f).epsilon(0.001));
+}
+
+TEST_CASE("massProps: full tank", "[mass]")
+{
+    RocketSpec s;
+    MassProps m = massProps(s, s.fuelCapacity);
+
+    CHECK(m.mass == Approx(1500.0f));
+    CHECK(m.com.y == Approx(0.23333f).epsilon(0.001));   // fuel sits low, COM moves toward the engine
+    CHECK(m.inertia == Approx(2183.33f).epsilon(0.001)); // incl. parallel-axis terms
 }
 
 TEST_CASE("massProps: half tank", "[mass]")
@@ -418,25 +463,6 @@ TEST_CASE("thrust is scaled down (tank runs dry)", "[fuel]")
 
 // ---------------- rot, I ----------------
 
-TEST_CASE("rotation input applies torque / inertia", "[rotation]")
-{
-    RocketSpec s;
-    World w = zeroG();
-    BodyState b = makeState(s, { 0, 0 }, 0);
-    Input in;
-    in.rotate = 1.0f;
-
-    step(s, b, in, w, kDt);
-    CHECK(b.angVel == Approx(s.maxTorque / 2183.33f * kDt).epsilon(0.001));
-    CHECK(b.angVel > 0.0f);
-
-    BodyState c = makeState(s, { 0, 0 }, 0);
-    in.rotate = -1.0f;
-    step(s, c, in, w, kDt);
-
-    CHECK(c.angVel == Approx(-b.angVel).epsilon(1e-4));
-}
-
 TEST_CASE("rotation input is clamped, zero = no torque", "[rotation]")
 {
     RocketSpec s;
@@ -467,7 +493,7 @@ TEST_CASE("heavier rocket turns slower (inertia)", "[rotation]")
     in.rotate = 1.0f;
 
     BodyState full = makeState(s, { 0, 0 }, 0, 1.0f);
-    BodyState empty = makeState(s, { 0, 0 }, 0, 0.0f);
+    BodyState empty = makeState(s, { 0, 0 }, 0, 0.5f);
 
     step(s, full, in, w, kDt);
     step(s, empty, in, w, kDt);
@@ -500,6 +526,190 @@ TEST_CASE("angle is wrapped to [-pi, pi]", "[rotation]")
         step(s, b, Input{}, w, kDt);
         REQUIRE(std::fabs(b.angle) <= kPi + 1e-4f);
     }
+}
+
+TEST_CASE("rot thrusters are couple: torque = 2 F arm", "[rcs]")
+{
+    RocketSpec s;
+    World w = zeroG();
+
+    Input in;
+    in.rotate = 0.5f;
+
+    BodyState b = makeState(s, { 0, 0 }, 0);
+    StepInfo i = step(s, b, in, w, kDt);
+
+    float torque = 2.0f * (0.5f * s.rcsThrust) * s.rcsArm; // 5400 [N*m]
+
+    CHECK(b.angVel == Approx(torque / 2183.33f * kDt).epsilon(0.002));
+    CHECK(i.rcsForce == Approx(1500.0f));
+    CHECK(i.rcsDir == 1);
+    CHECK(i.thrust == 0.0f);
+
+    CHECK(i.acc.x == Approx(0.0f).margin(1e-3)); // no net force
+    CHECK(i.acc.y == Approx(0.0f).margin(1e-3));
+}
+
+TEST_CASE("rot dir follows the sign", "[rcs]")
+{
+    RocketSpec s;
+    World w = zeroG();
+
+    BodyState cw = makeState(s, { 0, 0 }, 0);
+    BodyState ccw = cw;
+
+    Input in;
+    in.rotate = 1.0f;
+    step(s, cw, in, w, kDt);
+
+    in.rotate = -1.0f;
+    StepInfo i = step(s, ccw, in, w, kDt);
+
+    CHECK(cw.angVel > 0.0f);
+    CHECK(ccw.angVel == Approx(-cw.angVel).epsilon(1e-3));
+    CHECK(i.rcsDir == -1);
+}
+
+TEST_CASE("rot thrusters burn fuel and stop when no fuel", "[rcs][fuel]")
+{
+    RocketSpec s;
+    World w = zeroG();
+
+    Input in;
+    in.rotate = 1.0f;
+
+    BodyState b = makeState(s, { 0, 0 }, 0);
+
+    float f0 = b.fuel;
+    for (int i = 0; i < 240; ++i)
+        step(s, b, in, w, kDt);
+
+    CHECK(f0 - b.fuel == Approx(2.0f * s.rcsThrust / (s.isp * kG0)).epsilon(0.01));
+
+    BodyState e = makeState(s, { 0, 0 }, 0, 0.0f);
+    StepInfo i = step(s, e, in, w, kDt);
+
+    CHECK(i.rcsForce == 0.0f);
+    CHECK(e.angVel == 0.0f);
+}
+
+TEST_CASE("nozzle geometry and plume scale", "[rcs]")
+{
+    RocketSpec s;
+    auto cw = rcsNozzles(s, 1);
+
+    CHECK(cw[0].pos.y == Approx(-s.rcsArm));  CHECK(cw[0].exhaust.x == -1.0f); // nose, exhaust left
+    CHECK(cw[1].pos.y == Approx(s.rcsArm));   CHECK(cw[1].exhaust.x == 1.0f);  // tail, exhaust right
+    CHECK(mainNozzle(s).pos.y == Approx(s.halfHeight));
+    CHECK(plumeLength(25000.0f) / plumeLength(3000.0f) == Approx(25000.0f / 3000.0f));
+}
+
+TEST_CASE("each spec changes the dynamics", "[spec]")
+{
+    World w = zeroG();
+
+    Input in;
+    in.throttle = 1.0f;
+
+    RocketSpec heavy;
+    RocketSpec strong;
+    heavy.dryMass = 2400.0f;
+    strong.maxThrust = 50000.0f;
+
+    BodyState a = makeState(heavy, { 0, 0 }, 0);
+    BodyState b = makeState(RocketSpec{}, { 0, 0 }, 0);
+    BodyState c = makeState(strong, { 0, 0 }, 0);
+
+    StepInfo ia = step(heavy, a, in, w, kDt);
+    StepInfo ib = step(RocketSpec{}, b, in, w, kDt);
+    StepInfo ic = step(strong, c, in, w, kDt);
+
+    CHECK(std::fabs(ia.acc.y) < std::fabs(ib.acc.y));
+    CHECK(std::fabs(ic.acc.y) > std::fabs(ib.acc.y));
+}
+
+TEST_CASE("rockets exchange momentum when collide", "[collision][rockets]")
+{
+    RocketSpec a;
+    RocketSpec b;
+    b.fuelStart = 0.0f; // b is lighter, 800 [kg] vs 1500 [kg]
+
+    World w = zeroG();
+
+    BodyState A = makeState(a, { 0, 0 }, 0);
+    BodyState B = makeState(b, { 5, 0 }, 0, 0.0f);
+    A.vel = { 5, 0 };
+
+    float mA = 1500.0f, mB = 800.0f;
+    std::vector<RocketRef> refs{ RocketRef{ &a, &A, {}, {} }, RocketRef{ &b, &B, {}, {} } };
+    for (int i = 0; i < 480; ++i)
+        stepAll(refs, w, kDt);
+
+    CHECK(mA * A.vel.x + mB * B.vel.x == Approx(mA * 5.0f).epsilon(0.01)); // momentum conserved
+    CHECK(B.vel.x > 2.0f);                                                 // B was pushed
+    CHECK(A.vel.x < 4.5f);                                                 // A was slowed
+}
+
+TEST_CASE("rockets never overlap in head-on collision", "[collision][rockets]")
+{
+    RocketSpec s;
+    World w = zeroG();
+
+    BodyState A = makeState(s, { 0, 0 }, 0);
+    BodyState B = makeState(s, { 8, 0 }, 0);
+    A.vel = { 5, 0 };
+    B.vel = { -5, 0 };
+
+    std::vector<RocketRef> refs{ RocketRef{ &s, &A, {}, {} }, RocketRef{ &s, &B, {}, {} } };
+    float worst = -1e30f;
+    for (int i = 0; i < 240 * 3; ++i)
+    {
+        stepAll(refs, w, kDt);
+        auto PA = worldPoly(s, A);
+        auto PB = worldPoly(s, B);
+
+        worst = std::max({ worst, deepestVertex(PA, PB), deepestVertex(PB, PA) });
+    }
+    CHECK(worst < 0.1f);
+    CHECK(A.vel.x < 1.0f); // bounce apart
+    CHECK(B.vel.x > -1.0f);
+}
+
+TEST_CASE("thrusting rocket pushes another one", "[collision][rockets][thrust]")
+{
+    RocketSpec s;
+    World w = zeroG();
+
+    BodyState A = makeState(s, { 0, 0 }, kPi / 2);
+    BodyState B = makeState(s, { 10, 0 }, 0); // A nose points at B
+
+    Input push;
+    push.throttle = 1.0f;
+
+    std::vector<RocketRef> refs{ RocketRef{ &s, &A, push, {} }, RocketRef{ &s, &B, {}, {} } };
+    for (int i = 0; i < 240 * 3; ++i)
+        stepAll(refs, w, kDt);
+
+    CHECK(B.vel.x > 3.0f);
+    CHECK(B.pos.x > 10.0f);
+}
+
+TEST_CASE("rockets still rest on the ground next to each other", "[collision][rockets]")
+{
+    RocketSpec s;
+    World w = flatGround(10);
+
+    BodyState A = makeState(s, { 0, 7.5f }, 0);
+    BodyState B = makeState(s, { 3.6f, 7.5f }, 0);
+
+    std::vector<RocketRef> refs{ RocketRef{ &s, &A, {}, {} }, RocketRef{ &s, &B, {}, {} } };
+    for (int i = 0; i < 240 * 5; ++i)
+        stepAll(refs, w, kDt);
+
+    CHECK(lowestY(s, A) - 10.0f < 0.2f);
+    CHECK(lowestY(s, B) - 10.0f < 0.2f);
+    CHECK(std::max(deepestVertex(worldPoly(s, A), worldPoly(s, B)),
+                   deepestVertex(worldPoly(s, B), worldPoly(s, A))) < 0.1f);
 }
 
 // ---------------- terrain conversion ----------------

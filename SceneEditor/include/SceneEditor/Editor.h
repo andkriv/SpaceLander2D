@@ -5,7 +5,6 @@
 #include "RenderApi/RenderApi.h"
 #include "EditorModel/EditorModel.h"
 #include "EditorModel/SceneFileFlow.h"
-#include "SceneData/Rocket.h"
 
 class Editor
 {
@@ -22,6 +21,7 @@ public:
 
 private:
     void controlRocket(float dt);
+    void specPanel();
 
 private:
     EditorModel m_model;

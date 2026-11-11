@@ -199,3 +199,60 @@ TEST_CASE("same scene, inputs -> identical results", "[simulation]")
     CHECK(a.rockets()[0].state.pos.y == b.rockets()[0].state.pos.y);
     CHECK(a.rockets()[0].state.angle == b.rockets()[0].state.angle);
 }
+
+TEST_CASE("each rocket keeps the spec it had in the scene", "[simulation][spec]")
+{
+    Scene s = scene({ { 300, 200 }, { 700, 200 } }, false);
+    s.rockets[0].spec.dryMass = 2000.0f;
+    s.rockets[1].spec.fuelStart = 100.0f;
+
+    Simulation sim;
+    sim.start(s);
+    sim.step(Simulation::kStep * 1.5f, {});
+
+    CHECK(sim.rockets()[0].info.mass == Approx(2700.0f).epsilon(0.001));
+    CHECK(sim.rockets()[1].state.fuel == Approx(100.0f));
+    CHECK(sim.spec(1).fuelStart == Approx(100.0f));
+}
+
+TEST_CASE("thrust levels", "[simulation][level]")
+{
+    CHECK(Simulation::engineLevelFraction(0) == Approx(0.25f));
+    CHECK(Simulation::engineLevelFraction(1) == Approx(0.5f));
+    CHECK(Simulation::engineLevelFraction(2) == Approx(0.75f));
+    CHECK(Simulation::engineLevelFraction(3) == Approx(1.0f));
+    CHECK(Simulation::engineLevelFraction(-4) == Approx(0.25f)); // clamped
+    CHECK(Simulation::engineLevelFraction(9) == Approx(1.0f));
+
+    Simulation sim; sim.start(scene({ { 300, 200 }, { 700, 200 } }, false));
+    CHECK(sim.engineLevel() == 3);
+
+    sim.setEngineLevel(1);
+    CHECK(sim.engineLevel() == 1);
+
+    sim.selectRocket(1);
+    CHECK(sim.engineLevel() == 3); // per rocket
+
+    sim.setEngineLevel(99);
+    CHECK(sim.rockets()[1].level == 3);
+}
+
+TEST_CASE("rockets in scene collide with each other", "[simulation][rockets]")
+{
+    Simulation sim;
+    sim.start(scene({ { 300, 200 }, { 800, 200 } }, false));
+    sim.world().gravity = { 0, 0 };
+
+    Physics::Input go;
+    go.throttle = 1.0f;
+    sim.setEngineLevel(3);
+    // rocket 1 points sideways at rocket 2
+    Scene s = scene({ { 300, 200 }, { 800, 200 } }, false);
+    s.rockets[0].angle = 1.5708f;
+
+    sim.start(s);
+    sim.world().gravity = { 0, 0 };
+    for (int i = 0; i < 80; ++i)
+        sim.step(0.05f, go); // 4s
+    CHECK(sim.rockets()[1].state.vel.x > 3.0f);
+}

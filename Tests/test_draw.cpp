@@ -19,7 +19,8 @@ namespace
                 kGrayRocket { 200, 200, 200 },
                      kGreen { 120, 255, 140 },
                        kRed { 255,  90,  90 },
-                     kFlame { 255, 170,  40 };
+                     kFlame { 255, 170,  40 }, // light-orange color
+                       kRcs { 140, 220, 255 }; // light-blue color
 
     constexpr float kPi = 3.14159265f; // pi
 
@@ -63,7 +64,8 @@ namespace
 
 TEST_CASE("empty editor draws nothing", "[draw][editor]")
 {
-    Editor e; Rec r;
+    Rec r;
+    Editor e;
     e.draw(r);
 
     CHECK(r.lines.empty());
@@ -71,7 +73,8 @@ TEST_CASE("empty editor draws nothing", "[draw][editor]")
 
 TEST_CASE("finished polylines are drawn segment by segment, selected highlighted", "[draw][editor]")
 {
-    Editor e; Rec r;
+    Rec r;
+    Editor e;
     addLine(e.model(), { 0, 0 }, { 10, 0 }, { 10, 10 }); // 2 seg
     addLine(e.model(), { 50, 50 }, { 60, 60 });          // 1 seg, selected
     e.draw(r);
@@ -95,7 +98,8 @@ TEST_CASE("finished polylines are drawn segment by segment, selected highlighted
 
 TEST_CASE("polyline in progress shows segments, point markers and a cursor preview", "[draw][editor]")
 {
-    Editor e; Rec r;
+    Rec r;
+    Editor e;
     e.model().startDrawing();
     e.model().addPoint({ 10, 10 });
     e.model().addPoint({ 40, 10 });
@@ -119,7 +123,8 @@ TEST_CASE("polyline in progress shows segments, point markers and a cursor previ
 
 TEST_CASE("no preview line before the first point", "[draw][editor]")
 {
-    Editor e; Rec r;
+    Rec r;
+    Editor e;
     e.model().startDrawing();
     e.draw(r);
 
@@ -128,25 +133,27 @@ TEST_CASE("no preview line before the first point", "[draw][editor]")
 
 TEST_CASE("rocket is a four-edge trapezoid at pos", "[draw][editor]")
 {
-    Editor e; Rec r;
+    Rec r;
+    Editor e;
     e.model().addRocket(); // at (400, 200)
     e.draw(r);
 
     REQUIRE(r.lines.size() == 4);
     CHECK(r.count(kGreen) == 4);
 
-    CHECK(r.lines[0].x0 == Approx(292.0f));
+    CHECK(r.lines[0].x0 == Approx(392.0f));
     CHECK(r.lines[0].y0 == Approx(180.0f)); // narrow nose
 
-    CHECK(r.lines[0].x1 == Approx(308.0f));
+    CHECK(r.lines[0].x1 == Approx(408.0f));
 
-    CHECK(r.lines[2].x0 == Approx(316.0f));
+    CHECK(r.lines[2].x0 == Approx(416.0f));
     CHECK(r.lines[2].y0 == Approx(220.0f)); // wide base
 }
 
 TEST_CASE("only selected rocket is highlighted", "[draw][editor]")
 {
-    Editor e; Rec r;
+    Rec r;
+    Editor e;
     e.model().addRocket(); e.model().addRocket(); // second is selected
     e.draw(r);
 
@@ -158,12 +165,13 @@ TEST_CASE("only selected rocket is highlighted", "[draw][editor]")
 
 TEST_CASE("rocket drawing follows rotation", "[draw][editor]")
 {
-    Editor e; Rec r;
+    Rec r;
+    Editor e;
     e.model().addRocket();
     e.model().moveSelectedRocket({ 0, 0 }, kPi / 2); // nose points right
     e.draw(r);
 
-    CHECK(r.lines[0].x0 == Approx(320.0f).margin(1e-3));
+    CHECK(r.lines[0].x0 == Approx(420.0f).margin(1e-3));
     CHECK(r.lines[0].y0 == Approx(192.0f).margin(1e-3));
 }
 
@@ -171,7 +179,8 @@ TEST_CASE("rocket drawing follows rotation", "[draw][editor]")
 
 TEST_CASE("run mode draws terrain back in editor pixels", "[draw][execution]")
 {
-    Execution ex; Rec r;
+    Rec r;
+    Execution ex;
     ex.start(sceneOf({}, true));
     ex.draw(r);
 
@@ -187,7 +196,8 @@ TEST_CASE("run mode draws terrain back in editor pixels", "[draw][execution]")
 
 TEST_CASE("each rocket adds four hull edges, selected green", "[draw][execution]")
 {
-    Execution ex; Rec r;
+    Rec r;
+    Execution ex;
     ex.start(sceneOf({ { 300, 200 }, { 700, 200 } }, false));
     ex.draw(r);
 
@@ -198,7 +208,8 @@ TEST_CASE("each rocket adds four hull edges, selected green", "[draw][execution]
 
 TEST_CASE("rocket under thrust draws a flame scaled by throttle", "[draw][execution]")
 {
-    Execution ex; Rec r;
+    Rec r;
+    Execution ex;
     ex.start(sceneOf({ { 300, 200 } }, false));
     ex.draw(r);
     CHECK(r.count(kFlame) == 0); // idle, no flame
@@ -211,8 +222,9 @@ TEST_CASE("rocket under thrust draws a flame scaled by throttle", "[draw][execut
 
     REQUIRE(r2.count(kFlame) == 1);
     const auto& f = r2.lines.back();
-    CHECK(len(f) == Approx(30.0f).margin(0.5f)); // 3m full thrust, 10 px/m
-    CHECK(f.y1 > f.y0);                          // exhaust points down for a rocket pointing up
+    const float fullLenPx = Physics::kPlumeMetersPerNewton * 25000.0f * Simulation::kPxPerM;
+    CHECK(len(f) == Approx(fullLenPx).margin(0.5f)); // 3.75m full thrust, 10 px/m
+    CHECK(f.y1 > f.y0);                              // exhaust points down for a rocket pointing up
 
     Physics::Input half;
     half.throttle = 0.5f;
@@ -220,12 +232,13 @@ TEST_CASE("rocket under thrust draws a flame scaled by throttle", "[draw][execut
     Rec r3;
     ex.draw(r3);
 
-    CHECK(len(r3.lines.back()) == Approx(15.0f).margin(0.5f));
+    CHECK(len(r3.lines.back()) == Approx(0.5f * fullLenPx).margin(0.5f));
 }
 
 TEST_CASE("crashed rocket is red", "[draw][execution]")
 {
-    Execution ex; Rec r;
+    Rec r;
+    Execution ex;
     ex.start(sceneOf({ { 100, 300 } }, true)); // ~28m drop
     for (int i = 0; i < 160; ++i)
         ex.sim().step(0.05f, {});
@@ -234,4 +247,103 @@ TEST_CASE("crashed rocket is red", "[draw][execution]")
     ex.draw(r);
     CHECK(r.count(kRed) == 4);
     CHECK(r.count(kGreen) == 0);
+}
+
+TEST_CASE("main and rotation plumes share one force-to-length scale, for now", "[draw][execution][plume]")
+{
+    Execution ex;
+    ex.start(sceneOf({ { 300, 200 } }, false));
+    ex.sim().world().gravity = { 0, 0 };
+
+    Physics::Input main;
+    main.throttle = 1.0f;
+
+    ex.sim().step(Simulation::kStep * 1.5f, main);
+
+    Rec r1;
+    ex.draw(r1);
+    float mainLen = 0;
+    for (auto& l : r1.lines)
+        if (l.c == kFlame)
+            mainLen = len(l);
+
+    CHECK(mainLen == Approx(37.5f).margin(0.5f));
+
+    ex.start(sceneOf({ { 300, 200 } }, false));
+    ex.sim().world().gravity = { 0, 0 };
+
+    Physics::Input rot;
+    rot.rotate = 1.0f;
+
+    ex.sim().step(Simulation::kStep * 1.5f, rot);
+
+    Rec r2; ex.draw(r2);
+    std::vector<Rec::Line> rc;
+    for (auto& l : r2.lines)
+        if (l.c == kRcs)
+            rc.push_back(l);
+
+    REQUIRE(rc.size() == 2);
+    CHECK(r2.count(kFlame) == 0);
+    CHECK(len(rc[0]) == Approx(4.5f).margin(0.1f));
+    CHECK(mainLen / len(rc[0]) == Approx(25000.0f / 3000.0f).epsilon(0.03));
+    CHECK(rc[0].y0 < rc[1].y0); // nose nozzle above the tail nozzle
+    CHECK(rc[0].x1 < rc[0].x0); // clockwise, nose nozzle exhausts left
+    CHECK(rc[1].x1 > rc[1].x0); // tail nozzle exhausts right
+}
+
+TEST_CASE("plume length follows the thrust level", "[draw][execution][plume]")
+{
+    Execution ex;
+    ex.start(sceneOf({ { 300, 200 } }, false));
+    ex.sim().world().gravity = { 0, 0 };
+
+    float lens[4];
+    for (int lvl = 0; lvl < 4; ++lvl)
+    {
+        Physics::Input in;
+        in.throttle = Simulation::engineLevelFraction(lvl);
+        ex.sim().step(Simulation::kStep * 1.5f, in);
+
+        Rec r;
+        ex.draw(r);
+        for (auto& l : r.lines)
+            if (l.c == kFlame)
+                lens[lvl] = len(l);
+    }
+    CHECK(lens[1] == Approx(2 * lens[0]).epsilon(0.02));
+    CHECK(lens[3] == Approx(4 * lens[0]).epsilon(0.02));
+}
+
+TEST_CASE("editor and simulation draw the same hull", "[draw][shape]")
+{
+    Editor ed;
+    ed.model().addRocket();
+
+    RocketSpec s;
+    s.halfHeight = 3.0f;
+    s.noseHalfWidth = 0.4f;
+    s.baseHalfWidth = 2.5f;
+
+    ed.model().setSelectedSpec(s);
+    ed.model().moveSelectedRocket({ 0, 0 }, 0.6f);
+
+    Rec re;
+    ed.draw(re);
+
+    Execution ex;
+    ex.start(ed.model().scene());
+
+    Rec rs;
+    ex.draw(rs);
+
+    REQUIRE(re.lines.size() == 4);
+    REQUIRE(rs.lines.size() == 4); // t = 0, no plumes, no terrain
+    for (int i = 0; i < 4; ++i)
+    {
+        CHECK(re.lines[i].x0 == Approx(rs.lines[i].x0).margin(0.05f));
+        CHECK(re.lines[i].y0 == Approx(rs.lines[i].y0).margin(0.05f));
+        CHECK(re.lines[i].x1 == Approx(rs.lines[i].x1).margin(0.05f));
+        CHECK(re.lines[i].y1 == Approx(rs.lines[i].y1).margin(0.05f));
+    }
 }

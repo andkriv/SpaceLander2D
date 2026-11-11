@@ -2,33 +2,17 @@
 #include <array>
 #include <vector>
 
+#include <SceneData/Vec2.h>
 #include "SceneData/Terrain.h"
-#include "SceneData/Vec2.h"
+#include "SceneData/RocketSpec.h"
 
 namespace Physics
 {
+    using ::RocketSpec;
+    using ::hullLocal;
 
-    constexpr float kG0 = 9.80665f;   // standard gravity, for Isp
-
-    struct RocketSpec                // SI units
-    {                
-        float dryMass = 800.0f;      // [kg]
-        float fuelCapacity = 700.0f; // [kg]
-        float maxThrust = 25000.0f;  // [N]
-        float isp = 250.0f;          // [s], specific impulse
-        float maxTorque = 6000.0f;   // [N*m], rotation control authority
-
-        // Hull trapezoid, local frame centered on the hull, nose toward -y
-        // half for collision OOB in SAT, fuel tank bottom
-        float noseHalfWidth = 0.8f;  // [m]
-        float baseHalfWidth = 1.6f;  // [m]
-        float halfHeight = 2.0f;     // [m]
-
-        // fuel tank params
-        float dryComY = 0.0f;        // [m], dry-mass COM along the axis (+y = toward engine)
-        float tankWidth = 1.4f;      // [m], fuel tank sits at the bottom of the hull
-        float tankHeight = 3.0f;     // [m]
-    };
+    constexpr float kG0 = 9.80665f;                  // standard gravity, for Isp
+    constexpr float kPlumeMetersPerNewton = 1.5e-4f; // 25 [kN] -> 3.75[m], 3[kN] -> 0.45[m]
 
     struct BodyState
     {
@@ -41,8 +25,8 @@ namespace Physics
 
     struct Input
     {
-        float throttle = 0.0f;       // 0..1
-        float rotate = 0.0f;         // -1..1, positive = clockwise
+        float throttle = 0.0f;       // 0..1 main
+        float rotate = 0.0f;         // -1..1 rcs, positive = clockwise
     };
 
     struct Segment
@@ -71,19 +55,34 @@ namespace Physics
 
     struct StepInfo
     {
-        float mass = 0;              // [kg]
-        float inertia = 0;           // [kg*m^2]
-        float thrust = 0;            // [N]
-        float fuelFlow = 0;          // [kg/s]
+        float mass     = 0;          // [kg]
+        float inertia  = 0;          // [kg*m^2]
+        float thrust   = 0;          // [N], main engine
+        float rcsForce = 0;          // [N], F per rot nozzle
+        int   rcsDir   = 0;          // +1 cw, -1 ccw, 0 off
+        float fuelFlow = 0;          // [kg/s], main + rot
 
         Vec2  acc;                   // [m/s^2], measured: (vel_after - vel_before) / dt
         bool  touching = false;
         float impactSpeed = 0.0f;    // [m/s], largest closing speed on a contact this step
     };
 
-    Vec2 rotate(Vec2 v, float angle);
+    struct Nozzle
+    {
+        Vec2 pos;                    // hull-local
+        Vec2 exhaust;                // u dir gas leaves
+    };
 
-    std::array<Vec2, 4> hullLocal(const RocketSpec& s);
+    // one rocket taking part in a step
+    struct RocketRef
+    {
+        const RocketSpec* spec;
+        BodyState*        state;
+        Input             input;
+        StepInfo          info; // filled by stepAll
+    };
+
+    Vec2 rotate(Vec2 v, float angle);
 
     MassProps massProps(const RocketSpec& s, float fuel);
 
@@ -93,6 +92,14 @@ namespace Physics
     // state from the hull center (editor)
     BodyState makeState(const RocketSpec& s, Vec2 hullCenter, float angle, float fuelFraction = 1.0f);
 
+    Nozzle mainNozzle(const RocketSpec& s);
+    std::array<Nozzle, 2> rcsNozzles(const RocketSpec& s, int dir); // dir >= 0, clockwise couple
+    float plumeLength(float newtons);                               // [m], same scale for all nozzles
+
+    // rockets and the terrain solved together
+    void stepAll(std::vector<RocketRef>& bodies, const World& w, float dt);
+
+    // single rocket (no rocket-rocket contact)
     StepInfo step(const RocketSpec& s, BodyState& b, const Input& in, const World& w, float dt);
 
 } // namespace Physics
