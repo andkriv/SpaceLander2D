@@ -68,6 +68,17 @@ void Execution::update(IDrawTarget&)
     ImGui::SameLine();
     ImGui::Checkbox("Pause", &m_paused);
 
+    ImGui::Checkbox("Trails", &m_showTrails);
+    ImGui::SameLine();
+    ImGui::Checkbox("Prediction", &m_showPrediction);
+    ImGui::SameLine();
+    if (ImGui::Button("Clear trails"))
+        m_sim.clearTrails();
+
+    if (io.WantTextInput)
+        ImGui::TextColored(ImVec4(1, 0.6f, 0.2f, 1), "text field has the keyboard: click empty space");
+
+
     ImGui::SliderFloat("G [m/s^2]", &m_sim.world().gravity.y, 0.0f, 25.0f);
 
     const auto& rockets = m_sim.rockets();
@@ -113,6 +124,25 @@ void Execution::draw(IDrawTarget& r) const
 
     // rockets
     const auto& rockets = m_sim.rockets();
+
+    // trail
+    if (m_showTrails)
+    {
+        r.setColor(90, 160, 255, 180); // blue color
+        for (const auto& rd : rockets)
+            for (size_t k = 1; k < rd.trail.size(); ++k)
+                drawLine(r, rd.trail[k - 1], rd.trail[k]);
+    }
+
+    // prediction, coasting path, dashed
+    if (m_showPrediction && m_sim.selectedRocket() >= 0)
+    {
+        auto path = m_sim.predict(m_sim.selectedRocket());
+        r.setColor(255, 230, 120, 150); // light-yellow color
+        for (size_t k = 1; k < path.size(); k += 2)
+            drawLine(r, path[k - 1], path[k]);
+    }
+
     for (unsigned i = 0; i < (unsigned)rockets.size(); ++i)
     {
         const Simulation::RocketData& rd = rockets[i];
@@ -149,4 +179,24 @@ void Execution::draw(IDrawTarget& r) const
             for (const auto& nz : Physics::rcsNozzles(rd.spec, rd.info.rcsDir))
                 plume(nz, rd.info.rcsForce);
     }
+}
+
+void Execution::setShowTrails(bool v)
+{
+    m_showTrails = v;
+}
+
+bool Execution::showTrails() const
+{
+    return m_showTrails;
+}
+
+void Execution::setShowPrediction(bool v)
+{
+    m_showPrediction = v;
+}
+
+bool Execution::showPrediction() const
+{
+    return m_showPrediction;
 }
