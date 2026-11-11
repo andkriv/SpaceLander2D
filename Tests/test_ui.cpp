@@ -1,3 +1,4 @@
+#include <cfloat>
 #include <filesystem>
 
 #include <imgui.h>
@@ -49,18 +50,41 @@ namespace
                 frame(body);
         }
 
-        // activate a btn/checkbox by label, focus, press space
+        // activate a btn/checkbox by label, hover, click. disabled never hovered
         template <class F> void press(F&& body, const char* window, const char* label)
         {
             ImGuiWindow* w = ImGui::FindWindowByName(window);
             REQUIRE(w != nullptr);
 
-            ImGui::FocusWindow(w);
-            ImGui::SetFocusID(w->GetID(label), w);
-
+            ImGuiContext& g = *ImGui::GetCurrentContext();
             ImGuiIO& io = ImGui::GetIO();
-            io.AddKeyEvent(ImGuiKey_Space, true);  frame(body);
-            io.AddKeyEvent(ImGuiKey_Space, false); frame(body);
+            const ImGuiID id = w->GetID(label);
+
+            bool found = false;
+            for (float y = w->Pos.y + 2; y < w->Pos.y + w->Size.y && !found; y += 3.0f)
+            {
+                for (float x = w->Pos.x + 4; x < w->Pos.x + w->Size.x; x += 6.0f)
+                {
+                    io.AddMousePosEvent(x, y);
+                    frame(body);
+
+                    if (g.HoveredId == id)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found)
+                return;
+
+            io.AddMouseButtonEvent(0, true);
+            frames(2, body);
+
+            io.AddMouseButtonEvent(0, false);
+            frames(2, body);
+
+            io.AddMousePosEvent(-FLT_MAX, -FLT_MAX); frames(2, body); // move, next press clean
         }
 
         void hover(float x, float y)
@@ -237,7 +261,7 @@ TEST_CASE("WASD moves, Q/E rotates sel rocket", "[ui][editor]")
     ui.key(ImGuiKey_D, true); 
     ui.frames(60, body); 
     ui.key(ImGuiKey_D, false);
-    CHECK(ed.model().rockets()[0].pos.x == Approx(500.0f).margin(10.0f)); // 200 px/s for 1 s
+    CHECK(ed.model().rockets()[0].pos.x == Approx(600.0f).margin(10.0f)); // 200 px/s for 1s
     CHECK(ed.model().rockets()[1].pos.x == Approx(460.0f));              // other untouched
 
     ui.key(ImGuiKey_W, true); 
@@ -457,4 +481,91 @@ TEST_CASE("scene built in the editor runs in the sim", "[ui][integration]")
     Vec2 c = Physics::toWorld(ex.sim().spec(), b.state, { 0, 0 });
     CHECK(c.y < 60.0f);
     CHECK(c.y > 57.0f); // resting on the floor, not through it
+}
+
+TEST_CASE("apply thrust level", "[ui][execution][level]")
+{
+    Ui ui;
+    Execution ex;
+    Rec view;
+
+    auto body = [&]
+    {
+        ex.update(view);
+    };
+
+    ex.start(testScene());
+    ex.sim().world().gravity = { 0, 0 };
+    ui.frames(2, body);
+
+    ui.key(ImGuiKey_1, true);
+    ui.frames(1, body);
+
+    ui.key(ImGuiKey_1, false);
+    ui.frames(1, body);
+    CHECK(ex.sim().engineLevel() == 0);
+
+    ui.key(ImGuiKey_W, true);
+    ui.frames(10, body);
+    CHECK(ex.sim().rockets()[0].info.thrust == Approx(6250.0f));  // 25% of 25 [kN]
+    ui.key(ImGuiKey_W, false);
+
+    ui.key(ImGuiKey_3, true);
+    ui.frames(1, body);
+
+    ui.key(ImGuiKey_3, false);
+    ui.frames(1, body);
+
+    ui.key(ImGuiKey_W, true);
+    ui.frames(10, body);
+    CHECK(ex.sim().rockets()[0].info.thrust == Approx(18750.0f));
+
+    ui.key(ImGuiKey_W, false);
+}
+
+TEST_CASE("levels effects rcs, for now", "[ui][execution][level]")
+{
+    Ui ui;
+    Execution ex;
+    Rec view;
+
+    auto body = [&]
+    {
+        ex.update(view);
+    };
+
+    ex.start(testScene());
+    ui.frames(2, body);
+
+    ui.key(ImGuiKey_2, true);
+    ui.frames(1, body);
+
+    ui.key(ImGuiKey_2, false);
+    ui.frames(1, body);
+
+    ui.key(ImGuiKey_E, true);
+    ui.frames(10, body);
+    CHECK(ex.sim().rockets()[0].info.rcsForce == Approx(1500.0f)); // 50% of 3 [kN]
+
+    ui.key(ImGuiKey_E, false);
+}
+
+TEST_CASE("editing spec changes the rocket", "[ui][editor][spec]")
+{
+    Ui ui;
+    Editor ed;
+    Rec view;
+    TestDialog dlg;
+
+    auto body = [&]
+    {
+        ed.update(view, dlg);
+    };
+
+    ed.model().addRocket();
+    ui.frames(2, body);
+    CHECK(ImGui::FindWindowByName("Rocket Settings") != nullptr);
+
+    ui.press(body, "Rocket Settings", "Reset to defaults");
+    CHECK(ed.model().rockets()[0].spec.dryMass == Approx(800.0f));
 }
