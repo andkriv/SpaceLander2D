@@ -19,8 +19,10 @@ namespace
                 kGrayRocket { 200, 200, 200 },
                      kGreen { 120, 255, 140 },
                        kRed { 255,  90,  90 },
-                     kFlame { 255, 170,  40 }, // light-orange color
-                       kRcs { 140, 220, 255 }; // light-blue color
+                     kFlame { 255, 170,  40 },      // light-orange color
+                       kRcs { 140, 220, 255 },      // light-blue color
+                     kTrail {  90, 160, 255, 180 }, // blue color
+                   kPredict { 255, 230, 120, 150 }; // light-yellow color
 
     constexpr float kPi = 3.14159265f; // pi
 
@@ -199,6 +201,7 @@ TEST_CASE("each rocket adds four hull edges, selected green", "[draw][execution]
     Rec r;
     Execution ex;
     ex.start(sceneOf({ { 300, 200 }, { 700, 200 } }, false));
+    ex.setShowPrediction(false);
     ex.draw(r);
 
     CHECK(r.lines.size() == 8);
@@ -333,6 +336,7 @@ TEST_CASE("editor and simulation draw the same hull", "[draw][shape]")
 
     Execution ex;
     ex.start(ed.model().scene());
+    ex.setShowPrediction(false);
 
     Rec rs;
     ex.draw(rs);
@@ -346,4 +350,75 @@ TEST_CASE("editor and simulation draw the same hull", "[draw][shape]")
         CHECK(re.lines[i].x1 == Approx(rs.lines[i].x1).margin(0.05f));
         CHECK(re.lines[i].y1 == Approx(rs.lines[i].y1).margin(0.05f));
     }
+}
+
+// ---------------- trajectories ----------------
+
+TEST_CASE("flying rocket leaves a trail", "[draw][execution][trajectory]")
+{
+    Execution ex;
+    ex.start(sceneOf({ { 400, 200 } }, false));
+    ex.setShowPrediction(false);
+
+    Rec r0;
+    ex.draw(r0);
+    CHECK(r0.count(kTrail) == 0); // start point
+
+    for (int i = 0; i < 20; ++i)
+        ex.sim().step(0.05f, {}); // 1s fall
+
+    Rec r;
+    ex.draw(r);
+
+    int pts = (int)ex.sim().rockets()[0].trail.size();
+    REQUIRE(pts > 5);
+    CHECK(r.count(kTrail) == pts - 1);
+
+    for (auto& l : r.lines)
+    {   // trail is in editor pixels, x same
+        if (l.c == kTrail)
+        {
+            CHECK(l.x0 == Approx(400.0f).margin(0.5f));
+        }
+    }
+}
+
+TEST_CASE("trails switch off", "[draw][execution][trajectory]")
+{
+    Execution ex;
+    ex.start(sceneOf({ { 400, 200 } }, false));
+    ex.setShowPrediction(false);
+
+    for (int i = 0; i < 20; ++i)
+        ex.sim().step(0.05f, {});
+
+    ex.setShowTrails(false);
+
+    Rec r;
+    ex.draw(r);
+    CHECK(r.count(kTrail) == 0);
+}
+
+TEST_CASE("prediction is drawn dashed for the selected rocket", "[draw][execution][trajectory]")
+{
+    Execution ex;
+    ex.start(sceneOf({ { 400, 200 }, { 700, 200 } }, true));
+    ex.setShowTrails(false);
+
+    Rec r;
+    ex.draw(r);
+    int n = r.count(kPredict);
+    CHECK(n > 3);
+
+    auto path = ex.sim().predict(0);
+    CHECK(n == (int)(path.size() / 2)); // every other segment
+    for (auto& l : r.lines)
+        if (l.c == kPredict)
+            CHECK(l.x0 == Approx(400.0f).margin(1.0f)); // rocket 0, not rocket 1
+
+    ex.setShowPrediction(false);
+
+    Rec r2;
+    ex.draw(r2);
+    CHECK(r2.count(kPredict) == 0);
 }
